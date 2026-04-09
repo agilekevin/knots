@@ -734,6 +734,10 @@ canvas.dragging { cursor: grabbing; }
 
   resizeCanvas();
   startLevel(1);
+
+  // Expose state for testing
+  window.__gameState = state;
+  window.__startLevel = startLevel;
 })();
 </script>
 </body>

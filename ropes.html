@@ -795,7 +795,7 @@ canvas.can-grab { cursor: pointer; }
   function hitTestPeg(mx, my) {
     for (let i = 0; i < state.pegs.length; i++) {
       const p = state.pegs[i];
-      if (dist(mx, my, p.x, p.y) <= 20) return i;
+      if (dist(mx, my, p.x, p.y) <= 28) return i;
     }
     return -1;
   }
@@ -919,6 +919,10 @@ canvas.can-grab { cursor: pointer; }
   // --- Init ---
   resizeCanvas();
   startLevel(1);
+
+  // Expose state for testing
+  window.__gameState = state;
+  window.__startLevel = startLevel;
 })();
 </script>
 </body>

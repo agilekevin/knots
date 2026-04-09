@@ -1,0 +1,24 @@
+{
+  "name": "knots",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "npx playwright test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/agilekevin/knots.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/agilekevin/knots/issues"
+  },
+  "homepage": "https://github.com/agilekevin/knots#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.59.1"
+  }
+}
