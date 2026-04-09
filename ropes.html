@@ -12,7 +12,6 @@ body {
   color: #e0e0e0;
   font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
 }
-
 #header {
   display: flex;
   align-items: center;
@@ -66,10 +65,8 @@ body {
 }
 #crossings-icon::before { transform: rotate(45deg); }
 #crossings-icon::after { transform: rotate(-45deg); }
-#crossings-icon.solved::before, #crossings-icon.solved::after {
-  background: #34d399;
-}
-#crossings {
+#crossings-icon.solved::before, #crossings-icon.solved::after { background: #34d399; }
+#tangles {
   font-size: 22px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -78,7 +75,7 @@ body {
   min-width: 24px;
   text-align: center;
 }
-#crossings.solved { color: #34d399; }
+#tangles.solved { color: #34d399; }
 #header-right {
   display: flex;
   align-items: center;
@@ -91,7 +88,6 @@ body {
   color: #f5c563;
   font-variant-numeric: tabular-nums;
 }
-
 .band-btn {
   background: rgba(255,255,255,0.04);
   color: #8a7060;
@@ -110,7 +106,6 @@ body {
   color: #f5c563;
   border-color: rgba(245, 197, 99, 0.3);
 }
-
 .action-btn {
   background: rgba(255,255,255,0.04);
   color: #8a7060;
@@ -126,15 +121,14 @@ body {
   line-height: 1;
 }
 .action-btn:hover { background: rgba(255,255,255,0.08); color: #c8a882; }
-
 canvas {
   display: block;
   cursor: default;
   touch-action: none;
 }
-canvas.hovering { cursor: grab; }
+canvas.can-grab { cursor: grab; }
 canvas.dragging { cursor: grabbing; }
-
+canvas.can-drop { cursor: pointer; }
 #instructions {
   position: fixed;
   bottom: 24px;
@@ -150,12 +144,13 @@ canvas.dragging { cursor: grabbing; }
   transition: opacity 0.5s, transform 0.5s;
   pointer-events: none;
   z-index: 5;
+  text-align: center;
+  max-width: 400px;
 }
 #instructions.hidden {
   opacity: 0;
   transform: translateX(-50%) translateY(10px);
 }
-
 #win-overlay {
   display: none;
   position: fixed;
@@ -176,17 +171,8 @@ canvas.dragging { cursor: grabbing; }
   text-align: center;
   box-shadow: 0 20px 60px rgba(0,0,0,0.5);
 }
-#win-card h2 {
-  font-size: 36px;
-  font-weight: 700;
-  color: #f5c563;
-  margin-bottom: 6px;
-}
-#win-stats {
-  font-size: 14px;
-  color: #8a7060;
-  margin-bottom: 24px;
-}
+#win-card h2 { font-size: 36px; font-weight: 700; color: #f5c563; margin-bottom: 6px; }
+#win-stats { font-size: 14px; color: #8a7060; margin-bottom: 24px; }
 #win-stats span { color: #f5c563; font-weight: 600; }
 #next-level {
   background: linear-gradient(135deg, #f5c563, #e8a33a);
@@ -204,7 +190,6 @@ canvas.dragging { cursor: grabbing; }
   transform: translateY(-1px);
   box-shadow: 0 6px 24px rgba(245, 197, 99, 0.35);
 }
-
 @media (max-width: 700px) {
   #header { flex-wrap: wrap; height: auto; padding: 8px 12px; gap: 6px; }
   #header-left { order: 1; }
@@ -215,7 +200,6 @@ canvas.dragging { cursor: grabbing; }
 </style>
 </head>
 <body>
-
 <div id="header">
   <div id="header-left">
     <a id="home-link" href="index.html">&larr; Back</a>
@@ -224,7 +208,7 @@ canvas.dragging { cursor: grabbing; }
   </div>
   <div id="header-center">
     <div id="crossings-icon"></div>
-    <span id="crossings">0</span>
+    <span id="tangles">0</span>
   </div>
   <div id="header-right">
     <span id="moves-label">Moves</span>
@@ -238,11 +222,8 @@ canvas.dragging { cursor: grabbing; }
     <button class="action-btn" id="restart" title="Restart level">&#x21bb;</button>
   </div>
 </div>
-
 <canvas id="canvas"></canvas>
-
-<div id="instructions">Drag the pins to untangle all the ropes</div>
-
+<div id="instructions">Pick up a rope end and move it to the empty peg.<br>Be careful — dragging across other ropes adds tangles!</div>
 <div id="win-overlay">
   <div id="win-card">
     <h2>Untangled!</h2>
@@ -250,15 +231,14 @@ canvas.dragging { cursor: grabbing; }
     <button id="next-level">Next Level</button>
   </div>
 </div>
-
 <script>
 (function() {
   const canvas = document.getElementById('canvas');
   const ctx = canvas.getContext('2d');
   const header = document.getElementById('header');
   const levelLabel = document.getElementById('level-label');
-  const crossingsLabel = document.getElementById('crossings');
-  const crossingsIcon = document.getElementById('crossings-icon');
+  const tanglesLabel = document.getElementById('tangles');
+  const tanglesIcon = document.getElementById('crossings-icon');
   const movesLabel = document.getElementById('moves');
   const winMovesLabel = document.getElementById('win-moves');
   const restartBtn = document.getElementById('restart');
@@ -275,72 +255,82 @@ canvas.dragging { cursor: grabbing; }
   };
 
   const ROPE_COLORS = [
-    '#ef4444', '#f97316', '#eab308', '#22c55e',
-    '#3b82f6', '#a855f7', '#ec4899', '#14b8a6',
+    '#ef4444', '#3b82f6', '#22c55e', '#f97316',
+    '#a855f7', '#ec4899', '#14b8a6', '#eab308',
     '#f43f5e', '#8b5cf6', '#06b6d4', '#84cc16'
   ];
 
   const state = {
     level: 1,
-    pins: [],
-    ropes: [],
-    ropeCrossed: [],
-    crossings: 0,
-    dragPin: null,
-    hoverPin: null,
-    offsetX: 0,
-    offsetY: 0,
+    pegs: [],           // {x, y} — fixed positions
+    ropeAtPeg: [],      // ropeAtPeg[pegIdx] = {rope, end} | null
+    emptyPeg: -1,
+    ropes: [],          // {color, pegs: [pegIdx, pegIdx]}
+    twists: [],         // twists[i][j] = signed int
+    drag: null,         // {rope, end, fromPeg, prevMouse, savedTwists, savedRopes, savedRopeAtPeg, savedEmpty}
+    mouse: null,
+    hoverPeg: -1,
     solved: false,
     moves: 0,
     instructionsDismissed: false,
-    winAnimTime: 0,
-    winAnimId: null,
-    woodGrainSeed: []  // Pre-computed grain for stable rendering
+    woodGrain: [],
+    winAnimId: null
   };
 
   // --- Geometry ---
 
-  function orientation(px, py, qx, qy, rx, ry) {
-    const val = (qy - py) * (rx - qx) - (qx - px) * (ry - qy);
-    if (Math.abs(val) < 1e-10) return 0;
-    return val > 0 ? 1 : 2;
-  }
-
   function segmentsIntersect(ax, ay, bx, by, cx, cy, dx, dy) {
-    const o1 = orientation(ax, ay, bx, by, cx, cy);
-    const o2 = orientation(ax, ay, bx, by, dx, dy);
-    const o3 = orientation(cx, cy, dx, dy, ax, ay);
-    const o4 = orientation(cx, cy, dx, dy, bx, by);
-    return (o1 !== o2 && o3 !== o4 && o1 !== 0 && o2 !== 0 && o3 !== 0 && o4 !== 0);
+    const d1x = bx - ax, d1y = by - ay;
+    const d2x = dx - cx, d2y = dy - cy;
+    const denom = d1x * d2y - d1y * d2x;
+    if (Math.abs(denom) < 1e-10) return null;
+    const t = ((cx - ax) * d2y - (cy - ay) * d2x) / denom;
+    const u = ((cx - ax) * d1y - (cy - ay) * d1x) / denom;
+    if (t > 0.001 && t < 0.999 && u > 0.001 && u < 0.999) {
+      return {
+        x: ax + t * d1x,
+        y: ay + t * d1y,
+        t, u
+      };
+    }
+    return null;
   }
 
-  function chordsCrossOnCircle(a, b, c, d) {
-    if (a > b) { let t = a; a = b; b = t; }
-    if (c > d) { let t = c; c = d; d = t; }
-    return (a < c && c < b) !== (a < d && d < b);
+  function crossProductSign(ax, ay, bx, by, cx, cy, dx, dy) {
+    // Sign of cross product of (B-A) and (D-C)
+    const v = (bx - ax) * (dy - cy) - (by - ay) * (dx - cx);
+    return v > 0 ? 1 : -1;
   }
 
-  // --- Seeded random for stable wood grain ---
+  function dist(x1, y1, x2, y2) {
+    return Math.sqrt((x2-x1)**2 + (y2-y1)**2);
+  }
+
+  // --- Wood grain (stable) ---
+
   function generateWoodGrain() {
     const w = canvas.width / devicePixelRatio;
     const h = canvas.height / devicePixelRatio;
-    state.woodGrainSeed = [];
+    state.woodGrain = [];
     let y = 0;
     while (y < h) {
-      const gap = 10 + Math.random() * 10;
-      const points = [];
+      const pts = [];
       for (let x = 0; x <= w; x += 40) {
-        points.push({ x, dy: (Math.random() - 0.5) * 3 });
+        pts.push({ x, dy: (Math.random() - 0.5) * 3 });
       }
-      state.woodGrainSeed.push({ y, points });
-      y += gap;
+      state.woodGrain.push({ y, pts });
+      y += 10 + Math.random() * 10;
     }
   }
 
-  // --- Graph Generation ---
+  // --- Level Generation ---
 
-  function nodesForLevel(level) {
-    return 3 + level;
+  function ropesForLevel(level) {
+    return Math.min(2 + level, 12);
+  }
+
+  function shuffleMovesForLevel(level) {
+    return 3 + level * 2;
   }
 
   function shuffle(arr) {
@@ -351,115 +341,110 @@ canvas.dragging { cursor: grabbing; }
     return arr;
   }
 
-  function generateLevel(pinCount) {
+  function generateLevel(numRopes, numShuffles) {
     const w = canvas.width / devicePixelRatio;
     const h = canvas.height / devicePixelRatio;
     const cx = w / 2;
     const cy = h / 2;
-    const R = Math.min(cx, cy) * 0.6;
-    const pinRadius = Math.max(12, Math.min(22, 280 / pinCount));
+    const numPegs = 2 * numRopes + 1;
+    const R = Math.min(cx, cy) * 0.55;
 
-    const fixedCount = state.level >= 5 ? Math.max(1, Math.floor(pinCount * 0.2)) : 0;
-    const fixedIndices = new Set();
-    if (fixedCount > 0) {
-      const candidates = Array.from({ length: pinCount }, (_, i) => i);
-      shuffle(candidates);
-      for (let i = 0; i < fixedCount; i++) fixedIndices.add(candidates[i]);
-    }
-
-    state.pins = [];
-    for (let i = 0; i < pinCount; i++) {
-      const angle = (2 * Math.PI * i) / pinCount - Math.PI / 2;
-      state.pins.push({
+    // Place pegs in circle
+    state.pegs = [];
+    for (let i = 0; i < numPegs; i++) {
+      const angle = (2 * Math.PI * i) / numPegs - Math.PI / 2;
+      state.pegs.push({
         x: cx + R * Math.cos(angle),
-        y: cy + R * Math.sin(angle),
-        radius: pinRadius,
-        fixed: fixedIndices.has(i)
+        y: cy + R * Math.sin(angle)
       });
     }
 
+    // Create ropes connecting adjacent pairs (non-crossing)
     state.ropes = [];
-    const edgeSet = new Set();
+    state.ropeAtPeg = new Array(numPegs).fill(null);
+    for (let i = 0; i < numRopes; i++) {
+      const pA = i * 2;
+      const pB = i * 2 + 1;
+      state.ropes.push({
+        color: ROPE_COLORS[i % ROPE_COLORS.length],
+        pegs: [pA, pB]
+      });
+      state.ropeAtPeg[pA] = { rope: i, end: 0 };
+      state.ropeAtPeg[pB] = { rope: i, end: 1 };
+    }
+    state.emptyPeg = numPegs - 1;
 
-    function edgeKey(a, b) { return a < b ? `${a},${b}` : `${b},${a}`; }
+    // Initialize twists to 0
+    state.twists = [];
+    for (let i = 0; i < numRopes; i++) {
+      state.twists[i] = new Array(numRopes).fill(0);
+    }
 
-    function addRope(a, b) {
-      const key = edgeKey(a, b);
-      if (edgeSet.has(key)) return false;
-      for (const rope of state.ropes) {
-        if (rope.a === a || rope.a === b || rope.b === a || rope.b === b) continue;
-        if (chordsCrossOnCircle(a, b, rope.a, rope.b)) return false;
+    // Shuffle by performing random moves
+    for (let m = 0; m < numShuffles; m++) {
+      const occupied = [];
+      for (let p = 0; p < numPegs; p++) {
+        if (state.ropeAtPeg[p] !== null) occupied.push(p);
       }
-      edgeSet.add(key);
-      state.ropes.push({ a, b, color: ROPE_COLORS[state.ropes.length % ROPE_COLORS.length] });
-      return true;
+      const fromPeg = occupied[Math.floor(Math.random() * occupied.length)];
+      executeMove(fromPeg, state.emptyPeg);
     }
 
-    for (let i = 0; i < pinCount; i++) {
-      const a = i, b = (i + 1) % pinCount;
-      edgeSet.add(edgeKey(a, b));
-      state.ropes.push({ a, b, color: ROPE_COLORS[i % ROPE_COLORS.length] });
-    }
-
-    const maxSkip = Math.max(2, Math.floor(pinCount / 3));
-    const candidates = [];
-    for (let skip = 2; skip <= maxSkip; skip++) {
-      for (let i = 0; i < pinCount; i++) {
-        candidates.push([i, (i + skip) % pinCount]);
+    // Ensure there are actual tangles
+    if (totalTwists() === 0) {
+      // Force some tangles by doing more shuffles
+      for (let m = 0; m < numShuffles * 2; m++) {
+        const occupied = [];
+        for (let p = 0; p < state.pegs.length; p++) {
+          if (state.ropeAtPeg[p] !== null) occupied.push(p);
+        }
+        const fromPeg = occupied[Math.floor(Math.random() * occupied.length)];
+        executeMove(fromPeg, state.emptyPeg);
+        if (totalTwists() > 0) break;
       }
-    }
-    shuffle(candidates);
-
-    const targetEdges = Math.floor(1.8 * pinCount);
-    for (const [a, b] of candidates) {
-      if (state.ropes.length >= targetEdges) break;
-      addRope(a, b);
     }
 
     generateWoodGrain();
-    scramblePins();
-
-    for (let attempts = 0; attempts < 10; attempts++) {
-      countCrossings();
-      if (state.crossings > 0) break;
-      scramblePins();
-    }
   }
 
-  function scramblePins() {
-    const w = canvas.width / devicePixelRatio;
-    const h = canvas.height / devicePixelRatio;
-    const mx = w * 0.15, my = h * 0.15;
-    for (const pin of state.pins) {
-      if (pin.fixed) continue;
-      pin.x = mx + Math.random() * (w - 2 * mx);
-      pin.y = my + Math.random() * (h - 2 * my);
-    }
-  }
+  function executeMove(fromPeg, toPeg) {
+    const re = state.ropeAtPeg[fromPeg];
+    if (!re) return;
+    const ropeIdx = re.rope;
+    const endIdx = re.end;
 
-  // --- Crossing Detection ---
+    const p1 = state.pegs[fromPeg];
+    const p2 = state.pegs[toPeg];
 
-  function countCrossings() {
-    const ropes = state.ropes;
-    const pins = state.pins;
-    state.ropeCrossed = new Array(ropes.length).fill(false);
-    let count = 0;
-
-    for (let i = 0; i < ropes.length; i++) {
-      for (let j = i + 1; j < ropes.length; j++) {
-        const ri = ropes[i], rj = ropes[j];
-        if (ri.a === rj.a || ri.a === rj.b || ri.b === rj.a || ri.b === rj.b) continue;
-        if (segmentsIntersect(
-          pins[ri.a].x, pins[ri.a].y, pins[ri.b].x, pins[ri.b].y,
-          pins[rj.a].x, pins[rj.a].y, pins[rj.b].x, pins[rj.b].y
-        )) {
-          count++;
-          state.ropeCrossed[i] = true;
-          state.ropeCrossed[j] = true;
-        }
+    // Check which other ropes this move crosses
+    for (let j = 0; j < state.ropes.length; j++) {
+      if (j === ropeIdx) continue;
+      const other = state.ropes[j];
+      const c = state.pegs[other.pegs[0]];
+      const d = state.pegs[other.pegs[1]];
+      const hit = segmentsIntersect(p1.x, p1.y, p2.x, p2.y, c.x, c.y, d.x, d.y);
+      if (hit) {
+        const sign = crossProductSign(p1.x, p1.y, p2.x, p2.y, c.x, c.y, d.x, d.y);
+        state.twists[ropeIdx][j] += sign;
+        state.twists[j][ropeIdx] += sign;
       }
     }
-    state.crossings = count;
+
+    // Update assignments
+    state.ropes[ropeIdx].pegs[endIdx] = toPeg;
+    state.ropeAtPeg[toPeg] = re;
+    state.ropeAtPeg[fromPeg] = null;
+    state.emptyPeg = fromPeg;
+  }
+
+  function totalTwists() {
+    let total = 0;
+    for (let i = 0; i < state.ropes.length; i++) {
+      for (let j = i + 1; j < state.ropes.length; j++) {
+        total += Math.abs(state.twists[i][j]);
+      }
+    }
+    return total;
   }
 
   // --- Rendering ---
@@ -467,7 +452,6 @@ canvas.dragging { cursor: grabbing; }
   function drawBoard() {
     const w = canvas.width / devicePixelRatio;
     const h = canvas.height / devicePixelRatio;
-
     const grad = ctx.createLinearGradient(0, 0, w, h);
     grad.addColorStop(0, '#3d2a1a');
     grad.addColorStop(0.3, '#4a3222');
@@ -477,122 +461,161 @@ canvas.dragging { cursor: grabbing; }
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, w, h);
 
-    // Stable pre-computed grain lines
     ctx.strokeStyle = 'rgba(0,0,0,0.06)';
     ctx.lineWidth = 1;
-    for (const line of state.woodGrainSeed) {
+    for (const line of state.woodGrain) {
       ctx.beginPath();
       ctx.moveTo(0, line.y);
-      for (const pt of line.points) {
-        ctx.lineTo(pt.x, line.y + pt.dy);
-      }
+      for (const pt of line.pts) ctx.lineTo(pt.x, line.y + pt.dy);
       ctx.stroke();
     }
   }
 
-  function drawRope(ax, ay, bx, by, color, crossed, glowPhase) {
+  function getRopeEndpoints(ropeIdx) {
+    const r = state.ropes[ropeIdx];
+    // If this rope is being dragged, one end is at mouse
+    if (state.drag && state.drag.rope === ropeIdx) {
+      const otherEnd = state.drag.end === 0 ? 1 : 0;
+      const otherPeg = r.pegs[otherEnd];
+      const a = state.pegs[otherPeg];
+      const b = state.mouse || state.pegs[r.pegs[state.drag.end]];
+      return state.drag.end === 0 ? [b, a] : [a, b];
+    }
+    return [state.pegs[r.pegs[0]], state.pegs[r.pegs[1]]];
+  }
+
+  function drawRopeSegment(x1, y1, x2, y2, color, alpha) {
+    ctx.globalAlpha = alpha || 1;
     // Shadow
     ctx.beginPath();
-    ctx.moveTo(ax + 2, ay + 3);
-    ctx.lineTo(bx + 2, by + 3);
+    ctx.moveTo(x1 + 2, y1 + 3);
+    ctx.lineTo(x2 + 2, y2 + 3);
     ctx.strokeStyle = 'rgba(0,0,0,0.3)';
-    ctx.lineWidth = 8;
+    ctx.lineWidth = 9;
     ctx.lineCap = 'round';
     ctx.stroke();
+    // Body
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 6;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    // Highlight
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
 
-    if (crossed) {
-      // Crossed: dimmed, dashed-ish appearance
-      ctx.beginPath();
-      ctx.moveTo(ax, ay);
-      ctx.lineTo(bx, by);
-      ctx.globalAlpha = 0.35;
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 5;
-      ctx.lineCap = 'round';
-      ctx.stroke();
-      ctx.globalAlpha = 1.0;
-    } else {
-      // Uncrossed: full color with glow
-      // Outer glow
-      ctx.beginPath();
-      ctx.moveTo(ax, ay);
-      ctx.lineTo(bx, by);
-      const glowAlpha = glowPhase !== undefined ? 0.15 + 0.1 * Math.sin(glowPhase) : 0.15;
-      ctx.strokeStyle = color.replace(')', `, ${glowAlpha})`).replace('rgb', 'rgba').replace('#', '');
-      // Use hex-to-glow fallback
-      ctx.globalAlpha = glowAlpha;
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 14;
-      ctx.lineCap = 'round';
-      ctx.stroke();
-      ctx.globalAlpha = 1.0;
+  function computeAllCrossings() {
+    // Returns list of {ropeA, ropeB, point, twistCount}
+    const crossings = [];
+    for (let i = 0; i < state.ropes.length; i++) {
+      for (let j = i + 1; j < state.ropes.length; j++) {
+        const tw = state.twists[i][j];
+        if (tw === 0) continue;
+        const [a1, a2] = getRopeEndpoints(i);
+        const [b1, b2] = getRopeEndpoints(j);
+        const hit = segmentsIntersect(a1.x, a1.y, a2.x, a2.y, b1.x, b1.y, b2.x, b2.y);
+        if (hit) {
+          crossings.push({ ropeA: i, ropeB: j, point: hit, twistCount: tw });
+        } else {
+          // Ropes don't geometrically cross but have twists — find midpoint between them
+          const mx = (a1.x + a2.x + b1.x + b2.x) / 4;
+          const my = (a1.y + a2.y + b1.y + b2.y) / 4;
+          crossings.push({ ropeA: i, ropeB: j, point: {x: mx, y: my}, twistCount: tw, phantom: true });
+        }
+      }
+    }
+    return crossings;
+  }
 
-      // Rope body
-      ctx.beginPath();
-      ctx.moveTo(ax, ay);
-      ctx.lineTo(bx, by);
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 6;
-      ctx.lineCap = 'round';
-      ctx.stroke();
+  function drawRopes() {
+    const crossings = computeAllCrossings();
 
-      // Center highlight
+    // Build set of ropes involved in crossings and their over/under status
+    const underAtPoint = []; // {ropeIdx, point, radius}
+
+    for (const c of crossings) {
+      // Rope with higher twist contribution is "under"
+      const underRope = c.twistCount > 0 ? c.ropeB : c.ropeA;
+      underAtPoint.push({ rope: underRope, point: c.point });
+    }
+
+    // Phase 1: Draw all ropes
+    for (let i = 0; i < state.ropes.length; i++) {
+      const [a, b] = getRopeEndpoints(i);
+      const isDragged = state.drag && state.drag.rope === i;
+      const tangled = state.twists[i].some(t => t !== 0);
+      const alpha = (tangled && !isDragged) ? 0.7 : 1;
+      drawRopeSegment(a.x, a.y, b.x, b.y, state.ropes[i].color, alpha);
+    }
+
+    // Phase 2: At crossing points, redraw over rope on top
+    for (const c of crossings) {
+      const overRope = c.twistCount > 0 ? c.ropeA : c.ropeB;
+      const [a, b] = getRopeEndpoints(overRope);
+      const p = c.point;
+      const patchR = 16;
+
+      // Draw board-colored circle to create gap
+      ctx.save();
       ctx.beginPath();
-      ctx.moveTo(ax, ay);
-      ctx.lineTo(bx, by);
-      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-      ctx.lineWidth = 2;
-      ctx.stroke();
+      ctx.arc(p.x, p.y, patchR, 0, 2 * Math.PI);
+      ctx.clip();
+      drawBoard(); // redraw board in clip region
+      // Redraw under rope in clip (with gap look)
+      const underRope = c.twistCount > 0 ? c.ropeB : c.ropeA;
+      const [ua, ub] = getRopeEndpoints(underRope);
+      drawRopeSegment(ua.x, ua.y, ub.x, ub.y, state.ropes[underRope].color, 0.5);
+      // Redraw over rope in clip (solid, on top)
+      drawRopeSegment(a.x, a.y, b.x, b.y, state.ropes[overRope].color, 1);
+      ctx.restore();
+
+      // Draw twist count badge if > 1
+      const absTw = Math.abs(c.twistCount);
+      if (absTw > 1) {
+        ctx.beginPath();
+        ctx.arc(p.x + 10, p.y - 10, 9, 0, 2 * Math.PI);
+        ctx.fillStyle = 'rgba(0,0,0,0.7)';
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('x' + absTw, p.x + 10, p.y - 10);
+      }
     }
   }
 
-  function drawPin(pin, index, pulsePhase) {
-    const x = pin.x, y = pin.y;
-    let r = pin.radius;
-    const isDragging = (state.dragPin === index);
-    const isHovering = (state.hoverPin === index);
-    const isFixed = pin.fixed;
+  function drawPeg(index) {
+    const peg = state.pegs[index];
+    const x = peg.x, y = peg.y;
+    const isEmpty = state.ropeAtPeg[index] === null ||
+      (state.drag && state.drag.fromPeg === index);
+    const isHover = state.hoverPeg === index;
+    const isDropTarget = state.drag && isEmpty;
+    const r = 14;
 
-    // Win animation pulse
-    if (pulsePhase !== undefined) {
-      r += 2 * Math.sin(pulsePhase + index * 0.5);
-    }
-
-    // Pin shadow (ellipse below)
+    // Peg hole shadow
     ctx.beginPath();
-    ctx.ellipse(x + 1, y + r * 0.8, r * 0.9, r * 0.3, 0, 0, 2 * Math.PI);
+    ctx.arc(x, y + 2, r, 0, 2 * Math.PI);
     ctx.fillStyle = 'rgba(0,0,0,0.4)';
     ctx.fill();
 
-    // Hover/drag glow ring (drawn behind pin)
-    if (isDragging || (isHovering && !isFixed)) {
-      ctx.beginPath();
-      ctx.arc(x, y, r + 10, 0, 2 * Math.PI);
-      ctx.fillStyle = isDragging
-        ? 'rgba(251, 191, 36, 0.15)'
-        : 'rgba(255,255,255,0.08)';
-      ctx.fill();
-    }
-
-    // Pin base ring
-    ctx.beginPath();
-    ctx.arc(x, y, r + 2, 0, 2 * Math.PI);
-    ctx.fillStyle = isFixed ? '#5a3a28' : '#2a2a3a';
-    ctx.fill();
-
-    // Pin body
+    // Peg hole
     ctx.beginPath();
     ctx.arc(x, y, r, 0, 2 * Math.PI);
-    const grad = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.1, x, y, r);
-    if (isFixed) {
-      grad.addColorStop(0, '#a08868');
-      grad.addColorStop(1, '#5C4033');
-    } else if (isDragging) {
-      grad.addColorStop(0, '#fde68a');
-      grad.addColorStop(1, '#f59e0b');
-    } else if (isHovering) {
-      grad.addColorStop(0, '#f0f0f0');
-      grad.addColorStop(1, '#b0b0c0');
+    const grad = ctx.createRadialGradient(x, y, r * 0.3, x, y, r);
+    if (isEmpty) {
+      grad.addColorStop(0, '#1a0e08');
+      grad.addColorStop(1, '#2a1a10');
     } else {
       grad.addColorStop(0, '#d4d4dc');
       grad.addColorStop(1, '#8888a0');
@@ -600,53 +623,60 @@ canvas.dragging { cursor: grabbing; }
     ctx.fillStyle = grad;
     ctx.fill();
 
-    // Border
-    ctx.strokeStyle = isDragging
-      ? 'rgba(251, 191, 36, 0.7)'
-      : isFixed ? 'rgba(160, 136, 104, 0.6)' : 'rgba(255,255,255,0.2)';
-    ctx.lineWidth = 1.5;
+    // Peg rim
+    ctx.strokeStyle = isEmpty ? 'rgba(80,50,30,0.6)' : 'rgba(255,255,255,0.2)';
+    ctx.lineWidth = 2;
     ctx.stroke();
 
-    // Specular highlight
-    ctx.beginPath();
-    ctx.arc(x - r * 0.25, y - r * 0.3, r * 0.3, 0, 2 * Math.PI);
-    ctx.fillStyle = 'rgba(255,255,255,0.4)';
-    ctx.fill();
+    // If not empty, draw the rope color dot on top
+    if (!isEmpty) {
+      const re = state.ropeAtPeg[index];
+      if (re) {
+        ctx.beginPath();
+        ctx.arc(x, y, r * 0.4, 0, 2 * Math.PI);
+        ctx.fillStyle = state.ropes[re.rope].color;
+        ctx.fill();
+      }
+      // Specular highlight
+      ctx.beginPath();
+      ctx.arc(x - r * 0.25, y - r * 0.25, r * 0.3, 0, 2 * Math.PI);
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.fill();
+    }
 
-    // Center dimple
-    ctx.beginPath();
-    ctx.arc(x, y, r * 0.12, 0, 2 * Math.PI);
-    ctx.fillStyle = isFixed ? '#3d2a1a' : 'rgba(0,0,0,0.2)';
-    ctx.fill();
+    // Highlight for drop target
+    if (isDropTarget && isHover) {
+      ctx.beginPath();
+      ctx.arc(x, y, r + 6, 0, 2 * Math.PI);
+      ctx.strokeStyle = 'rgba(245, 197, 99, 0.6)';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([4, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
 
-    // Fixed pin indicator: ring + lock icon
-    if (isFixed) {
-      // Distinct colored ring around pin
+    // Highlight for hover on occupied peg (can pick up)
+    if (!state.drag && !isEmpty && isHover) {
+      ctx.beginPath();
+      ctx.arc(x, y, r + 5, 0, 2 * Math.PI);
+      ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    // Empty peg pulse (subtle)
+    if (isEmpty && !state.drag) {
       ctx.beginPath();
       ctx.arc(x, y, r + 4, 0, 2 * Math.PI);
-      ctx.strokeStyle = 'rgba(160, 136, 104, 0.7)';
+      ctx.strokeStyle = 'rgba(245, 197, 99, 0.15)';
       ctx.lineWidth = 2;
       ctx.setLineDash([3, 3]);
       ctx.stroke();
       ctx.setLineDash([]);
-
-      // Lock symbol below
-      const ly = y + r + 11;
-      // Lock body
-      ctx.fillStyle = 'rgba(160, 136, 104, 0.8)';
-      ctx.beginPath();
-      ctx.roundRect(x - 5, ly - 2, 10, 8, 1.5);
-      ctx.fill();
-      // Lock shackle
-      ctx.beginPath();
-      ctx.arc(x, ly - 2, 4, Math.PI, 0);
-      ctx.strokeStyle = 'rgba(160, 136, 104, 0.8)';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
     }
   }
 
-  function draw(winPhase) {
+  function draw() {
     const dpr = devicePixelRatio;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const w = canvas.width / dpr;
@@ -654,61 +684,19 @@ canvas.dragging { cursor: grabbing; }
     ctx.clearRect(0, 0, w, h);
 
     drawBoard();
+    drawRopes();
 
-    const ropes = state.ropes;
-    const pins = state.pins;
-
-    // Draw crossed ropes first (behind), then uncrossed (in front)
-    for (let i = 0; i < ropes.length; i++) {
-      if (!state.ropeCrossed[i]) continue;
-      const r = ropes[i];
-      drawRope(pins[r.a].x, pins[r.a].y, pins[r.b].x, pins[r.b].y, r.color, true);
-    }
-    for (let i = 0; i < ropes.length; i++) {
-      if (state.ropeCrossed[i]) continue;
-      const r = ropes[i];
-      drawRope(pins[r.a].x, pins[r.a].y, pins[r.b].x, pins[r.b].y, r.color, false, winPhase);
-    }
-
-    // Draw pins
-    for (let i = 0; i < pins.length; i++) {
-      drawPin(pins[i], i, winPhase);
+    // Draw pegs on top
+    for (let i = 0; i < state.pegs.length; i++) {
+      drawPeg(i);
     }
 
     // Update header
-    crossingsLabel.textContent = state.crossings;
-    const solved = state.crossings === 0;
-    crossingsLabel.className = solved ? 'solved' : '';
-    crossingsIcon.className = solved ? 'solved' : '';
+    const tt = totalTwists();
+    tanglesLabel.textContent = tt;
+    tanglesLabel.className = tt === 0 ? 'solved' : '';
+    tanglesIcon.className = tt === 0 ? 'solved' : '';
     movesLabel.textContent = state.moves;
-  }
-
-  // --- Win Animation ---
-
-  function startWinAnimation() {
-    state.winAnimTime = 0;
-    const startTime = performance.now();
-    function animFrame(now) {
-      const elapsed = now - startTime;
-      state.winAnimTime = elapsed;
-      const phase = elapsed * 0.003; // Slow pulse
-      draw(phase);
-      if (elapsed < 1500) {
-        state.winAnimId = requestAnimationFrame(animFrame);
-      } else {
-        // Show overlay after animation
-        winMovesLabel.textContent = state.moves;
-        winOverlay.classList.add('visible');
-      }
-    }
-    state.winAnimId = requestAnimationFrame(animFrame);
-  }
-
-  function stopWinAnimation() {
-    if (state.winAnimId) {
-      cancelAnimationFrame(state.winAnimId);
-      state.winAnimId = null;
-    }
   }
 
   // --- Interaction ---
@@ -720,13 +708,10 @@ canvas.dragging { cursor: grabbing; }
     return { x: clientX - rect.left, y: clientY - rect.top };
   }
 
-  function hitTestPin(mx, my) {
-    for (let i = state.pins.length - 1; i >= 0; i--) {
-      const p = state.pins[i];
-      const dx = mx - p.x, dy = my - p.y;
-      if (dx * dx + dy * dy <= (p.radius + 6) * (p.radius + 6)) {
-        return i;
-      }
+  function hitTestPeg(mx, my) {
+    for (let i = 0; i < state.pegs.length; i++) {
+      const p = state.pegs[i];
+      if (dist(mx, my, p.x, p.y) <= 20) return i;
     }
     return -1;
   }
@@ -738,51 +723,111 @@ canvas.dragging { cursor: grabbing; }
     }
   }
 
+  function deepCopyTwists() {
+    return state.twists.map(row => [...row]);
+  }
+
   function onPointerDown(e) {
     if (state.solved) return;
     e.preventDefault();
     dismissInstructions();
     const pos = getCanvasPos(e);
-    const idx = hitTestPin(pos.x, pos.y);
-    if (idx >= 0 && !state.pins[idx].fixed) {
-      state.dragPin = idx;
-      state.offsetX = pos.x - state.pins[idx].x;
-      state.offsetY = pos.y - state.pins[idx].y;
-      canvas.classList.remove('hovering');
-      canvas.classList.add('dragging');
-      draw();
-    }
+    const pegIdx = hitTestPeg(pos.x, pos.y);
+    if (pegIdx < 0) return;
+
+    const re = state.ropeAtPeg[pegIdx];
+    if (!re) return; // clicked empty peg
+
+    // Pick up this rope end
+    state.drag = {
+      rope: re.rope,
+      end: re.end,
+      fromPeg: pegIdx,
+      prevMouse: { x: state.pegs[pegIdx].x, y: state.pegs[pegIdx].y },
+      savedTwists: deepCopyTwists(),
+      savedRopePegs: state.ropes.map(r => [...r.pegs]),
+      savedRopeAtPeg: [...state.ropeAtPeg],
+      savedEmpty: state.emptyPeg
+    };
+    state.mouse = pos;
+    // Temporarily free this peg
+    state.ropeAtPeg[pegIdx] = null;
+    canvas.classList.add('dragging');
+    draw();
   }
 
   function onPointerMove(e) {
     const pos = getCanvasPos(e);
+    state.mouse = pos;
 
-    if (state.dragPin !== null) {
+    if (state.drag) {
       e.preventDefault();
-      state.pins[state.dragPin].x = pos.x - state.offsetX;
-      state.pins[state.dragPin].y = pos.y - state.offsetY;
-      countCrossings();
+
+      // Track twist changes: does mouse path cross any other rope?
+      const prev = state.drag.prevMouse;
+      for (let j = 0; j < state.ropes.length; j++) {
+        if (j === state.drag.rope) continue;
+        const r = state.ropes[j];
+        const c = state.pegs[r.pegs[0]];
+        const d = state.pegs[r.pegs[1]];
+        const hit = segmentsIntersect(prev.x, prev.y, pos.x, pos.y, c.x, c.y, d.x, d.y);
+        if (hit) {
+          const sign = crossProductSign(prev.x, prev.y, pos.x, pos.y, c.x, c.y, d.x, d.y);
+          state.twists[state.drag.rope][j] += sign;
+          state.twists[j][state.drag.rope] += sign;
+        }
+      }
+      state.drag.prevMouse = { x: pos.x, y: pos.y };
+
+      // Update hover
+      state.hoverPeg = hitTestPeg(pos.x, pos.y);
       draw();
       return;
     }
 
+    // Hover detection (no drag)
     if (!state.solved) {
-      const idx = hitTestPin(pos.x, pos.y);
-      const canGrab = idx >= 0 && !state.pins[idx].fixed;
-      if (idx !== state.hoverPin) {
-        state.hoverPin = idx >= 0 ? idx : null;
-        canvas.classList.toggle('hovering', canGrab);
+      const pegIdx = hitTestPeg(pos.x, pos.y);
+      if (pegIdx !== state.hoverPeg) {
+        state.hoverPeg = pegIdx;
+        const occupied = pegIdx >= 0 && state.ropeAtPeg[pegIdx] !== null;
+        canvas.classList.remove('can-grab', 'can-drop');
+        if (occupied) canvas.classList.add('can-grab');
         draw();
       }
     }
   }
 
   function onPointerUp(e) {
-    if (state.dragPin === null) return;
-    state.moves++;
-    state.dragPin = null;
-    canvas.classList.remove('dragging');
-    countCrossings();
+    if (!state.drag) return;
+    const pos = getCanvasPos(e);
+    const pegIdx = hitTestPeg(pos.x, pos.y);
+
+    // Check if dropping on a valid empty peg
+    const isEmptyPeg = pegIdx >= 0 && (
+      state.ropeAtPeg[pegIdx] === null // truly empty
+    );
+
+    if (isEmptyPeg && pegIdx !== state.drag.fromPeg) {
+      // Commit the move
+      state.ropes[state.drag.rope].pegs[state.drag.end] = pegIdx;
+      state.ropeAtPeg[pegIdx] = { rope: state.drag.rope, end: state.drag.end };
+      // fromPeg is already null (freed on pick up)
+      state.emptyPeg = state.drag.fromPeg;
+      state.moves++;
+    } else {
+      // Cancel — restore everything
+      state.twists = state.drag.savedTwists;
+      for (let i = 0; i < state.ropes.length; i++) {
+        state.ropes[i].pegs = state.drag.savedRopePegs[i];
+      }
+      state.ropeAtPeg = state.drag.savedRopeAtPeg;
+      state.emptyPeg = state.drag.savedEmpty;
+    }
+
+    state.drag = null;
+    state.mouse = null;
+    canvas.classList.remove('dragging', 'can-grab', 'can-drop');
     draw();
     checkWin();
   }
@@ -791,24 +836,25 @@ canvas.dragging { cursor: grabbing; }
   canvas.addEventListener('mousemove', onPointerMove);
   canvas.addEventListener('mouseup', onPointerUp);
   canvas.addEventListener('mouseleave', (e) => {
-    if (state.dragPin !== null) onPointerUp(e);
-    if (state.hoverPin !== null) {
-      state.hoverPin = null;
-      canvas.classList.remove('hovering');
-      draw();
-    }
+    if (state.drag) onPointerUp(e);
+    state.hoverPeg = -1;
+    canvas.classList.remove('can-grab', 'can-drop');
   });
   canvas.addEventListener('touchstart', onPointerDown, { passive: false });
   canvas.addEventListener('touchmove', onPointerMove, { passive: false });
   canvas.addEventListener('touchend', onPointerUp);
-  canvas.addEventListener('touchcancel', onPointerUp);
+  canvas.addEventListener('touchcancel', (e) => { if (state.drag) onPointerUp(e); });
 
   // --- Win ---
 
   function checkWin() {
-    if (state.crossings === 0 && !state.solved) {
+    if (totalTwists() === 0 && !state.solved && state.moves > 0) {
       state.solved = true;
-      startWinAnimation();
+      winMovesLabel.textContent = state.moves;
+      // Brief delay then show overlay
+      setTimeout(() => {
+        winOverlay.classList.add('visible');
+      }, 400);
     }
   }
 
@@ -824,34 +870,23 @@ canvas.dragging { cursor: grabbing; }
   }
 
   function startLevel(level) {
-    stopWinAnimation();
     state.level = level;
     state.solved = false;
     state.moves = 0;
-    state.hoverPin = null;
-    state.dragPin = null;
+    state.drag = null;
+    state.mouse = null;
+    state.hoverPeg = -1;
     winOverlay.classList.remove('visible');
-    const pinCount = nodesForLevel(level);
+    const numRopes = ropesForLevel(level);
+    const numShuffles = shuffleMovesForLevel(level);
     levelLabel.textContent = `Level ${level}`;
     updateBandButtons();
-    generateLevel(pinCount);
+    generateLevel(numRopes, numShuffles);
     draw();
   }
 
   function restartLevel() {
-    stopWinAnimation();
-    state.solved = false;
-    state.moves = 0;
-    state.hoverPin = null;
-    state.dragPin = null;
-    winOverlay.classList.remove('visible');
-    scramblePins();
-    for (let attempts = 0; attempts < 10; attempts++) {
-      countCrossings();
-      if (state.crossings > 0) break;
-      scramblePins();
-    }
-    draw();
+    startLevel(state.level);
   }
 
   // --- UI Bindings ---
@@ -878,7 +913,7 @@ canvas.dragging { cursor: grabbing; }
     canvas.height = h * dpr;
   }
 
-  window.addEventListener('resize', () => { resizeCanvas(); draw(); });
+  window.addEventListener('resize', () => { resizeCanvas(); startLevel(state.level); });
 
   // --- Init ---
   resizeCanvas();
