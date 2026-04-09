@@ -126,9 +126,7 @@ canvas {
   cursor: default;
   touch-action: none;
 }
-canvas.can-grab { cursor: grab; }
-canvas.dragging { cursor: grabbing; }
-canvas.can-drop { cursor: pointer; }
+canvas.can-grab { cursor: pointer; }
 #instructions {
   position: fixed;
   bottom: 24px;
@@ -223,7 +221,7 @@ canvas.can-drop { cursor: pointer; }
   </div>
 </div>
 <canvas id="canvas"></canvas>
-<div id="instructions">Pick up a rope end and move it to the empty peg.<br>Be careful — dragging across other ropes adds tangles!</div>
+<div id="instructions">Click a peg to move its rope end to the empty peg.<br>The straight-line path may cross other ropes — adding tangles!</div>
 <div id="win-overlay">
   <div id="win-card">
     <h2>Untangled!</h2>
@@ -267,8 +265,8 @@ canvas.can-drop { cursor: pointer; }
     emptyPeg: -1,
     ropes: [],          // {color, pegs: [pegIdx, pegIdx]}
     twists: [],         // twists[i][j] = signed int
-    drag: null,         // {rope, end, fromPeg, prevMouse, savedTwists, savedRopes, savedRopeAtPeg, savedEmpty}
-    mouse: null,
+    zOrder: [],         // zOrder[ropeIdx] = draw priority (higher = on top)
+    zCounter: 0,        // monotonic counter for z-ordering
     hoverPeg: -1,
     solved: false,
     moves: 0,
@@ -341,6 +339,121 @@ canvas.can-drop { cursor: pointer; }
     return arr;
   }
 
+  // --- Peg Layout Shapes ---
+
+  const PEG_LAYOUTS = [
+    { name: 'circle', fn: layoutCircle },
+    { name: 'square', fn: layoutSquare },
+    { name: 'parallel', fn: layoutParallel },
+    { name: 'hexagon', fn: layoutHexagon },
+    { name: 'triangle', fn: layoutTriangle },
+    { name: 'diamond', fn: layoutDiamond }
+  ];
+
+  function layoutCircle(numPegs, cx, cy, R) {
+    const pegs = [];
+    for (let i = 0; i < numPegs; i++) {
+      const angle = (2 * Math.PI * i) / numPegs - Math.PI / 2;
+      pegs.push({ x: cx + R * Math.cos(angle), y: cy + R * Math.sin(angle) });
+    }
+    return pegs;
+  }
+
+  function layoutSquare(numPegs, cx, cy, R) {
+    const pegs = [];
+    const perSide = Math.ceil(numPegs / 4);
+    let placed = 0;
+    for (let side = 0; side < 4 && placed < numPegs; side++) {
+      const count = Math.min(perSide, numPegs - placed);
+      for (let i = 0; i < count; i++) {
+        const t = count > 1 ? i / count : 0;
+        let x, y;
+        if (side === 0) { x = -R + t * 2 * R; y = -R; }
+        else if (side === 1) { x = R; y = -R + t * 2 * R; }
+        else if (side === 2) { x = R - t * 2 * R; y = R; }
+        else { x = -R; y = R - t * 2 * R; }
+        pegs.push({ x: cx + x, y: cy + y });
+        placed++;
+      }
+    }
+    return pegs;
+  }
+
+  function layoutParallel(numPegs, cx, cy, R) {
+    const pegs = [];
+    const topCount = Math.ceil(numPegs / 2);
+    const botCount = numPegs - topCount;
+    const rowGap = R * 0.8;
+    for (let i = 0; i < topCount; i++) {
+      const t = topCount > 1 ? i / (topCount - 1) : 0.5;
+      pegs.push({ x: cx - R + t * 2 * R, y: cy - rowGap });
+    }
+    for (let i = 0; i < botCount; i++) {
+      const t = botCount > 1 ? i / (botCount - 1) : 0.5;
+      pegs.push({ x: cx - R + t * 2 * R, y: cy + rowGap });
+    }
+    return pegs;
+  }
+
+  function layoutHexagon(numPegs, cx, cy, R) {
+    // Place pegs in concentric rings
+    const pegs = [];
+    if (numPegs <= 6) return layoutCircle(numPegs, cx, cy, R);
+    // Center peg
+    pegs.push({ x: cx, y: cy });
+    // Outer ring
+    const outer = numPegs - 1;
+    for (let i = 0; i < outer; i++) {
+      const angle = (2 * Math.PI * i) / outer - Math.PI / 2;
+      pegs.push({ x: cx + R * Math.cos(angle), y: cy + R * Math.sin(angle) });
+    }
+    return pegs;
+  }
+
+  function layoutTriangle(numPegs, cx, cy, R) {
+    const pegs = [];
+    const perSide = Math.ceil(numPegs / 3);
+    let placed = 0;
+    // Triangle vertices
+    const verts = [
+      { x: cx, y: cy - R },
+      { x: cx + R * 0.87, y: cy + R * 0.5 },
+      { x: cx - R * 0.87, y: cy + R * 0.5 }
+    ];
+    for (let side = 0; side < 3 && placed < numPegs; side++) {
+      const a = verts[side], b = verts[(side + 1) % 3];
+      const count = Math.min(perSide, numPegs - placed);
+      for (let i = 0; i < count; i++) {
+        const t = count > 1 ? i / count : 0;
+        pegs.push({ x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) });
+        placed++;
+      }
+    }
+    return pegs;
+  }
+
+  function layoutDiamond(numPegs, cx, cy, R) {
+    const pegs = [];
+    const perSide = Math.ceil(numPegs / 4);
+    let placed = 0;
+    const verts = [
+      { x: cx, y: cy - R },
+      { x: cx + R, y: cy },
+      { x: cx, y: cy + R },
+      { x: cx - R, y: cy }
+    ];
+    for (let side = 0; side < 4 && placed < numPegs; side++) {
+      const a = verts[side], b = verts[(side + 1) % 4];
+      const count = Math.min(perSide, numPegs - placed);
+      for (let i = 0; i < count; i++) {
+        const t = count > 1 ? i / count : 0;
+        pegs.push({ x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) });
+        placed++;
+      }
+    }
+    return pegs;
+  }
+
   function generateLevel(numRopes, numShuffles) {
     const w = canvas.width / devicePixelRatio;
     const h = canvas.height / devicePixelRatio;
@@ -349,15 +462,9 @@ canvas.can-drop { cursor: pointer; }
     const numPegs = 2 * numRopes + 1;
     const R = Math.min(cx, cy) * 0.55;
 
-    // Place pegs in circle
-    state.pegs = [];
-    for (let i = 0; i < numPegs; i++) {
-      const angle = (2 * Math.PI * i) / numPegs - Math.PI / 2;
-      state.pegs.push({
-        x: cx + R * Math.cos(angle),
-        y: cy + R * Math.sin(angle)
-      });
-    }
+    // Pick a random layout shape
+    const layout = PEG_LAYOUTS[Math.floor(Math.random() * PEG_LAYOUTS.length)];
+    state.pegs = layout.fn(numPegs, cx, cy, R);
 
     // Create ropes connecting adjacent pairs (non-crossing)
     state.ropes = [];
@@ -374,34 +481,32 @@ canvas.can-drop { cursor: pointer; }
     }
     state.emptyPeg = numPegs - 1;
 
-    // Initialize twists to 0
+    // Initialize twists and z-order
     state.twists = [];
+    state.zOrder = [];
+    state.zCounter = numRopes;
     for (let i = 0; i < numRopes; i++) {
       state.twists[i] = new Array(numRopes).fill(0);
+      state.zOrder[i] = i;
     }
 
-    // Shuffle by performing random moves
-    for (let m = 0; m < numShuffles; m++) {
-      const occupied = [];
-      for (let p = 0; p < numPegs; p++) {
-        if (state.ropeAtPeg[p] !== null) occupied.push(p);
+    // Shuffle by performing random moves — keep going until we have tangles
+    for (let attempt = 0; attempt < 5; attempt++) {
+      // Reset twists for fresh attempt
+      for (let i = 0; i < numRopes; i++) {
+        state.twists[i].fill(0);
       }
-      const fromPeg = occupied[Math.floor(Math.random() * occupied.length)];
-      executeMove(fromPeg, state.emptyPeg);
-    }
-
-    // Ensure there are actual tangles
-    if (totalTwists() === 0) {
-      // Force some tangles by doing more shuffles
-      for (let m = 0; m < numShuffles * 2; m++) {
+      for (let m = 0; m < numShuffles; m++) {
         const occupied = [];
-        for (let p = 0; p < state.pegs.length; p++) {
+        for (let p = 0; p < numPegs; p++) {
           if (state.ropeAtPeg[p] !== null) occupied.push(p);
         }
         const fromPeg = occupied[Math.floor(Math.random() * occupied.length)];
         executeMove(fromPeg, state.emptyPeg);
-        if (totalTwists() > 0) break;
       }
+      if (totalTwists() > 0) break;
+      // If no tangles, do more aggressive shuffling
+      numShuffles = Math.max(numShuffles * 2, 20);
     }
 
     generateWoodGrain();
@@ -435,6 +540,10 @@ canvas.can-drop { cursor: pointer; }
     state.ropeAtPeg[toPeg] = re;
     state.ropeAtPeg[fromPeg] = null;
     state.emptyPeg = fromPeg;
+
+    // Move this rope to top layer
+    state.zCounter++;
+    state.zOrder[ropeIdx] = state.zCounter;
   }
 
   function totalTwists() {
@@ -492,14 +601,6 @@ canvas.can-drop { cursor: pointer; }
 
   function getRopeEndpoints(ropeIdx) {
     const r = state.ropes[ropeIdx];
-    // If this rope is being dragged, one end is at mouse
-    if (state.drag && state.drag.rope === ropeIdx) {
-      const otherEnd = state.drag.end === 0 ? 1 : 0;
-      const otherPeg = r.pegs[otherEnd];
-      const a = state.pegs[otherPeg];
-      const b = state.mouse || state.pegs[r.pegs[state.drag.end]];
-      return state.drag.end === 0 ? [b, a] : [a, b];
-    }
     return [state.pegs[r.pegs[0]], state.pegs[r.pegs[1]]];
   }
 
@@ -558,55 +659,43 @@ canvas.can-drop { cursor: pointer; }
   function drawRopes() {
     const crossings = computeAllCrossings();
 
-    // Build set of ropes involved in crossings and their over/under status
-    const underAtPoint = []; // {ropeIdx, point, radius}
+    // Sort ropes by z-order (lowest first = drawn first = underneath)
+    const ropeOrder = state.ropes.map((_, i) => i);
+    ropeOrder.sort((a, b) => state.zOrder[a] - state.zOrder[b]);
 
-    for (const c of crossings) {
-      // Rope with higher twist contribution is "under"
-      const underRope = c.twistCount > 0 ? c.ropeB : c.ropeA;
-      underAtPoint.push({ rope: underRope, point: c.point });
-    }
-
-    // Phase 1: Draw all ropes
-    for (let i = 0; i < state.ropes.length; i++) {
+    // Phase 1: Draw all ropes in z-order
+    for (const i of ropeOrder) {
       const [a, b] = getRopeEndpoints(i);
-      const isDragged = state.drag && state.drag.rope === i;
       const tangled = state.twists[i].some(t => t !== 0);
-      const alpha = (tangled && !isDragged) ? 0.7 : 1;
-      drawRopeSegment(a.x, a.y, b.x, b.y, state.ropes[i].color, alpha);
+      drawRopeSegment(a.x, a.y, b.x, b.y, state.ropes[i].color, tangled ? 0.7 : 1);
     }
 
-    // Phase 2: At crossing points, redraw over rope on top
+    // Phase 2: At crossing points, redraw with over/under based on z-order
     for (const c of crossings) {
-      const overRope = c.twistCount > 0 ? c.ropeA : c.ropeB;
+      // The rope with higher z-order is "over"
+      const overRope = state.zOrder[c.ropeA] > state.zOrder[c.ropeB] ? c.ropeA : c.ropeB;
+      const underRope = overRope === c.ropeA ? c.ropeB : c.ropeA;
       const [a, b] = getRopeEndpoints(overRope);
       const p = c.point;
       const patchR = 16;
 
-      // Draw board-colored circle to create gap
       ctx.save();
       ctx.beginPath();
       ctx.arc(p.x, p.y, patchR, 0, 2 * Math.PI);
       ctx.clip();
-      drawBoard(); // redraw board in clip region
-      // Redraw under rope in clip (with gap look)
-      const underRope = c.twistCount > 0 ? c.ropeB : c.ropeA;
+      drawBoard();
       const [ua, ub] = getRopeEndpoints(underRope);
       drawRopeSegment(ua.x, ua.y, ub.x, ub.y, state.ropes[underRope].color, 0.5);
-      // Redraw over rope in clip (solid, on top)
       drawRopeSegment(a.x, a.y, b.x, b.y, state.ropes[overRope].color, 1);
       ctx.restore();
-
     }
   }
 
   function drawPeg(index) {
     const peg = state.pegs[index];
     const x = peg.x, y = peg.y;
-    const isEmpty = state.ropeAtPeg[index] === null ||
-      (state.drag && state.drag.fromPeg === index);
+    const isEmpty = state.ropeAtPeg[index] === null;
     const isHover = state.hoverPeg === index;
-    const isDropTarget = state.drag && isEmpty;
     const r = 14;
 
     // Peg hole shadow
@@ -650,19 +739,8 @@ canvas.can-drop { cursor: pointer; }
       ctx.fill();
     }
 
-    // Highlight for drop target
-    if (isDropTarget && isHover) {
-      ctx.beginPath();
-      ctx.arc(x, y, r + 6, 0, 2 * Math.PI);
-      ctx.strokeStyle = 'rgba(245, 197, 99, 0.6)';
-      ctx.lineWidth = 3;
-      ctx.setLineDash([4, 4]);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-
-    // Highlight for hover on occupied peg (can pick up)
-    if (!state.drag && !isEmpty && isHover) {
+    // Highlight for hover on occupied peg (can click to move)
+    if (!isEmpty && isHover) {
       ctx.beginPath();
       ctx.arc(x, y, r + 5, 0, 2 * Math.PI);
       ctx.strokeStyle = 'rgba(255,255,255,0.2)';
@@ -671,7 +749,7 @@ canvas.can-drop { cursor: pointer; }
     }
 
     // Empty peg pulse (subtle)
-    if (isEmpty && !state.drag) {
+    if (isEmpty) {
       ctx.beginPath();
       ctx.arc(x, y, r + 4, 0, 2 * Math.PI);
       ctx.strokeStyle = 'rgba(245, 197, 99, 0.15)';
@@ -729,11 +807,7 @@ canvas.can-drop { cursor: pointer; }
     }
   }
 
-  function deepCopyTwists() {
-    return state.twists.map(row => [...row]);
-  }
-
-  function onPointerDown(e) {
+  function onClick(e) {
     if (state.solved) return;
     e.preventDefault();
     dismissInstructions();
@@ -742,116 +816,37 @@ canvas.can-drop { cursor: pointer; }
     if (pegIdx < 0) return;
 
     const re = state.ropeAtPeg[pegIdx];
-    if (!re) return; // clicked empty peg
+    if (!re) return; // clicked empty peg — nothing to do
 
-    // Pick up this rope end
-    state.drag = {
-      rope: re.rope,
-      end: re.end,
-      fromPeg: pegIdx,
-      prevMouse: { x: state.pegs[pegIdx].x, y: state.pegs[pegIdx].y },
-      savedTwists: deepCopyTwists(),
-      savedRopePegs: state.ropes.map(r => [...r.pegs]),
-      savedRopeAtPeg: [...state.ropeAtPeg],
-      savedEmpty: state.emptyPeg
-    };
-    state.mouse = pos;
-    // Temporarily free this peg
-    state.ropeAtPeg[pegIdx] = null;
-    canvas.classList.add('dragging');
-    draw();
-  }
-
-  function onPointerMove(e) {
-    const pos = getCanvasPos(e);
-    state.mouse = pos;
-
-    if (state.drag) {
-      e.preventDefault();
-
-      // Track twist changes: does mouse path cross any other rope?
-      const prev = state.drag.prevMouse;
-      for (let j = 0; j < state.ropes.length; j++) {
-        if (j === state.drag.rope) continue;
-        const r = state.ropes[j];
-        const c = state.pegs[r.pegs[0]];
-        const d = state.pegs[r.pegs[1]];
-        const hit = segmentsIntersect(prev.x, prev.y, pos.x, pos.y, c.x, c.y, d.x, d.y);
-        if (hit) {
-          const sign = crossProductSign(prev.x, prev.y, pos.x, pos.y, c.x, c.y, d.x, d.y);
-          state.twists[state.drag.rope][j] += sign;
-          state.twists[j][state.drag.rope] += sign;
-        }
-      }
-      state.drag.prevMouse = { x: pos.x, y: pos.y };
-
-      // Update hover
-      state.hoverPeg = hitTestPeg(pos.x, pos.y);
-      draw();
-      return;
-    }
-
-    // Hover detection (no drag)
-    if (!state.solved) {
-      const pegIdx = hitTestPeg(pos.x, pos.y);
-      if (pegIdx !== state.hoverPeg) {
-        state.hoverPeg = pegIdx;
-        const occupied = pegIdx >= 0 && state.ropeAtPeg[pegIdx] !== null;
-        canvas.classList.remove('can-grab', 'can-drop');
-        if (occupied) canvas.classList.add('can-grab');
-        draw();
-      }
-    }
-  }
-
-  function onPointerUp(e) {
-    if (!state.drag) return;
-    const pos = getCanvasPos(e);
-    const pegIdx = hitTestPeg(pos.x, pos.y);
-
-    // Check if dropping on a valid empty peg
-    const isEmptyPeg = pegIdx >= 0 && (
-      state.ropeAtPeg[pegIdx] === null // truly empty
-    );
-
-    if (isEmptyPeg && pegIdx !== state.drag.fromPeg) {
-      // Commit the move
-      state.ropes[state.drag.rope].pegs[state.drag.end] = pegIdx;
-      state.ropeAtPeg[pegIdx] = { rope: state.drag.rope, end: state.drag.end };
-      // fromPeg is already null (freed on pick up)
-      state.emptyPeg = state.drag.fromPeg;
-      state.moves++;
-      // Reconcile twists with geometry: if two ropes don't cross, clear their twist count
-      reconcileTwists();
-    } else {
-      // Cancel — restore everything
-      state.twists = state.drag.savedTwists;
-      for (let i = 0; i < state.ropes.length; i++) {
-        state.ropes[i].pegs = state.drag.savedRopePegs[i];
-      }
-      state.ropeAtPeg = state.drag.savedRopeAtPeg;
-      state.emptyPeg = state.drag.savedEmpty;
-    }
-
-    state.drag = null;
-    state.mouse = null;
-    canvas.classList.remove('dragging', 'can-grab', 'can-drop');
+    // Instantly move this rope end to the empty peg
+    executeMove(pegIdx, state.emptyPeg);
+    reconcileTwists();
+    state.moves++;
     draw();
     checkWin();
   }
 
-  canvas.addEventListener('mousedown', onPointerDown);
-  canvas.addEventListener('mousemove', onPointerMove);
-  canvas.addEventListener('mouseup', onPointerUp);
-  canvas.addEventListener('mouseleave', (e) => {
-    if (state.drag) onPointerUp(e);
+  function onHover(e) {
+    if (state.solved) return;
+    const pos = getCanvasPos(e);
+    const pegIdx = hitTestPeg(pos.x, pos.y);
+    if (pegIdx !== state.hoverPeg) {
+      state.hoverPeg = pegIdx;
+      const occupied = pegIdx >= 0 && state.ropeAtPeg[pegIdx] !== null;
+      canvas.classList.remove('can-grab');
+      if (occupied) canvas.classList.add('can-grab');
+      draw();
+    }
+  }
+
+  canvas.addEventListener('click', onClick);
+  canvas.addEventListener('mousemove', onHover);
+  canvas.addEventListener('mouseleave', () => {
     state.hoverPeg = -1;
-    canvas.classList.remove('can-grab', 'can-drop');
+    canvas.classList.remove('can-grab');
+    draw();
   });
-  canvas.addEventListener('touchstart', onPointerDown, { passive: false });
-  canvas.addEventListener('touchmove', onPointerMove, { passive: false });
-  canvas.addEventListener('touchend', onPointerUp);
-  canvas.addEventListener('touchcancel', (e) => { if (state.drag) onPointerUp(e); });
+  canvas.addEventListener('touchstart', onClick, { passive: false });
 
   // --- Win ---
 
@@ -881,8 +876,6 @@ canvas.can-drop { cursor: pointer; }
     state.level = level;
     state.solved = false;
     state.moves = 0;
-    state.drag = null;
-    state.mouse = null;
     state.hoverPeg = -1;
     winOverlay.classList.remove('visible');
     const numRopes = ropesForLevel(level);
