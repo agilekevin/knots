@@ -447,6 +447,25 @@ canvas.can-drop { cursor: pointer; }
     return total;
   }
 
+  function reconcileTwists() {
+    // If two ropes don't geometrically cross, their twist count must be 0.
+    // This prevents phantom twists from imprecise dragging.
+    for (let i = 0; i < state.ropes.length; i++) {
+      for (let j = i + 1; j < state.ropes.length; j++) {
+        if (state.twists[i][j] === 0) continue;
+        const a = state.pegs[state.ropes[i].pegs[0]];
+        const b = state.pegs[state.ropes[i].pegs[1]];
+        const c = state.pegs[state.ropes[j].pegs[0]];
+        const d = state.pegs[state.ropes[j].pegs[1]];
+        const hit = segmentsIntersect(a.x, a.y, b.x, b.y, c.x, c.y, d.x, d.y);
+        if (!hit) {
+          state.twists[i][j] = 0;
+          state.twists[j][i] = 0;
+        }
+      }
+    }
+  }
+
   // --- Rendering ---
 
   function drawBoard() {
@@ -578,19 +597,6 @@ canvas.can-drop { cursor: pointer; }
       drawRopeSegment(a.x, a.y, b.x, b.y, state.ropes[overRope].color, 1);
       ctx.restore();
 
-      // Draw twist count badge if > 1
-      const absTw = Math.abs(c.twistCount);
-      if (absTw > 1) {
-        ctx.beginPath();
-        ctx.arc(p.x + 10, p.y - 10, 9, 0, 2 * Math.PI);
-        ctx.fillStyle = 'rgba(0,0,0,0.7)';
-        ctx.fill();
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 10px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('x' + absTw, p.x + 10, p.y - 10);
-      }
     }
   }
 
@@ -815,6 +821,8 @@ canvas.can-drop { cursor: pointer; }
       // fromPeg is already null (freed on pick up)
       state.emptyPeg = state.drag.fromPeg;
       state.moves++;
+      // Reconcile twists with geometry: if two ropes don't cross, clear their twist count
+      reconcileTwists();
     } else {
       // Cancel — restore everything
       state.twists = state.drag.savedTwists;
