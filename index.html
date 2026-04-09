@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Untangle</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  overflow: hidden;
+  background: #1a1a2e;
+  color: #eee;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+#topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  background: #16213e;
+  height: 50px;
+  font-size: 14px;
+  flex-wrap: wrap;
+}
+#topbar select, #topbar button {
+  background: #0f3460;
+  color: #eee;
+  border: 1px solid #1a5276;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+#topbar button:hover, #topbar select:hover {
+  background: #1a5276;
+}
+#crossings { color: #e74c3c; font-weight: bold; }
+#crossings.solved { color: #2ecc71; }
+canvas {
+  display: block;
+  cursor: grab;
+  background: #0f3460;
+  touch-action: none;
+}
+canvas.dragging { cursor: grabbing; }
+#win-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  z-index: 10;
+}
+#win-overlay.visible { display: flex; }
+#win-overlay h2 {
+  font-size: 48px;
+  color: #2ecc71;
+  margin-bottom: 20px;
+  text-shadow: 0 0 20px rgba(46, 204, 113, 0.5);
+}
+#win-overlay button {
+  background: #2ecc71;
+  color: #1a1a2e;
+  border: none;
+  padding: 12px 32px;
+  border-radius: 8px;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+#win-overlay button:hover { background: #27ae60; }
+</style>
+</head>
+<body>
+<div id="topbar">
+  <span id="level-label">Level 1 (4 nodes)</span>
+  <span id="crossings">Crossings: 0</span>
+  <select id="difficulty">
+    <option value="easy">Easy (4–7)</option>
+    <option value="medium">Medium (8–12)</option>
+    <option value="hard">Hard (13–20)</option>
+    <option value="expert">Expert (21+)</option>
+  </select>
+  <button id="restart">Restart</button>
+</div>
+<canvas id="canvas"></canvas>
+<div id="win-overlay">
+  <h2>Solved!</h2>
+  <button id="next-level">Next Level</button>
+</div>
+<script>
+(function() {
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const topbar = document.getElementById('topbar');
+  const levelLabel = document.getElementById('level-label');
+  const crossingsLabel = document.getElementById('crossings');
+  const difficultySelect = document.getElementById('difficulty');
+  const restartBtn = document.getElementById('restart');
+  const winOverlay = document.getElementById('win-overlay');
+  const nextLevelBtn = document.getElementById('next-level');
+
+  const BANDS = {
+    easy:   { startLevel: 1 },
+    medium: { startLevel: 5 },
+    hard:   { startLevel: 10 },
+    expert: { startLevel: 18 }
+  };
+
+  const state = {
+    level: 1,
+    nodes: [],
+    edges: [],
+    edgeCrossed: [],
+    crossings: 0,
+    dragNode: null,
+    offsetX: 0,
+    offsetY: 0,
+    solved: false
+  };
+
+  // --- Geometry Utilities ---
+
+  function orientation(px, py, qx, qy, rx, ry) {
+    const val = (qy - py) * (rx - qx) - (qx - px) * (ry - qy);
+    if (Math.abs(val) < 1e-10) return 0;
+    return val > 0 ? 1 : 2;
+  }
+
+  function segmentsIntersect(ax, ay, bx, by, cx, cy, dx, dy) {
+    const o1 = orientation(ax, ay, bx, by, cx, cy);
+    const o2 = orientation(ax, ay, bx, by, dx, dy);
+    const o3 = orientation(cx, cy, dx, dy, ax, ay);
+    const o4 = orientation(cx, cy, dx, dy, bx, by);
+    if (o1 !== o2 && o3 !== o4 && o1 !== 0 && o2 !== 0 && o3 !== 0 && o4 !== 0) {
+      return true;
+    }
+    return false;
+  }
+
+  function chordsCrossOnCircle(a, b, c, d, n) {
+    // Normalize so a < b and c < d
+    if (a > b) { let t = a; a = b; b = t; }
+    if (c > d) { let t = c; c = d; d = t; }
+    // Two chords cross iff the endpoints interleave on the circle
+    // (a,b) and (c,d) cross iff exactly one of c,d is in the open arc (a,b)
+    const cInArc = (a < c && c < b);
+    const dInArc = (a < d && d < b);
+    return cInArc !== dInArc;
+  }
+
+  // --- Graph Generation ---
+
+  function nodesForLevel(level) {
+    return 3 + level;
+  }
+
+  function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
+  function generateGraph(nodeCount) {
+    const w = canvas.width / devicePixelRatio;
+    const h = canvas.height / devicePixelRatio;
+    const cx = w / 2;
+    const cy = h / 2;
+    const R = Math.min(cx, cy) * 0.65;
+    const nodeRadius = Math.max(8, Math.min(16, 200 / nodeCount));
+
+    // Place nodes on circle
+    state.nodes = [];
+    for (let i = 0; i < nodeCount; i++) {
+      const angle = (2 * Math.PI * i) / nodeCount - Math.PI / 2;
+      state.nodes.push({
+        x: cx + R * Math.cos(angle),
+        y: cy + R * Math.sin(angle),
+        radius: nodeRadius
+      });
+    }
+
+    // Build edges: start with cycle
+    state.edges = [];
+    const edgeSet = new Set();
+
+    function edgeKey(a, b) {
+      return a < b ? `${a},${b}` : `${b},${a}`;
+    }
+
+    function addEdge(a, b) {
+      const key = edgeKey(a, b);
+      if (edgeSet.has(key)) return false;
+      // Check against existing edges for crossing on circle
+      for (const [ea, eb] of state.edges) {
+        if (ea === a || ea === b || eb === a || eb === b) continue;
+        if (chordsCrossOnCircle(a, b, ea, eb, nodeCount)) return false;
+      }
+      edgeSet.add(key);
+      state.edges.push([a, b]);
+      return true;
+    }
+
+    // Cycle edges
+    for (let i = 0; i < nodeCount; i++) {
+      const key = edgeKey(i, (i + 1) % nodeCount);
+      edgeSet.add(key);
+      state.edges.push([i, (i + 1) % nodeCount]);
+    }
+
+    // Chord candidates: skip 2, 3, ... up to nodeCount/3
+    const maxSkip = Math.max(2, Math.floor(nodeCount / 3));
+    const candidates = [];
+    for (let skip = 2; skip <= maxSkip; skip++) {
+      for (let i = 0; i < nodeCount; i++) {
+        candidates.push([i, (i + skip) % nodeCount]);
+      }
+    }
+    shuffle(candidates);
+
+    const targetEdges = Math.floor(2 * nodeCount);
+    for (const [a, b] of candidates) {
+      if (state.edges.length >= targetEdges) break;
+      addEdge(a, b);
+    }
+
+    // Scramble
+    scrambleNodes();
+
+    // Ensure there are crossings; re-scramble if needed
+    for (let attempts = 0; attempts < 10; attempts++) {
+      countCrossings();
+      if (state.crossings > 0) break;
+      scrambleNodes();
+    }
+  }
+
+  function scrambleNodes() {
+    const w = canvas.width / devicePixelRatio;
+    const h = canvas.height / devicePixelRatio;
+    const margin = 40;
+    for (const node of state.nodes) {
+      node.x = margin + Math.random() * (w - 2 * margin);
+      node.y = margin + Math.random() * (h - 2 * margin);
+    }
+  }
+
+  // --- Crossing Detection ---
+
+  function countCrossings() {
+    const edges = state.edges;
+    const nodes = state.nodes;
+    state.edgeCrossed = new Array(edges.length).fill(false);
+    let count = 0;
+
+    for (let i = 0; i < edges.length; i++) {
+      for (let j = i + 1; j < edges.length; j++) {
+        const [a, b] = edges[i];
+        const [c, d] = edges[j];
+        // Skip edges sharing a node
+        if (a === c || a === d || b === c || b === d) continue;
+        if (segmentsIntersect(
+          nodes[a].x, nodes[a].y, nodes[b].x, nodes[b].y,
+          nodes[c].x, nodes[c].y, nodes[d].x, nodes[d].y
+        )) {
+          count++;
+          state.edgeCrossed[i] = true;
+          state.edgeCrossed[j] = true;
+        }
+      }
+    }
+    state.crossings = count;
+  }
+
+  // --- Rendering ---
+
+  function draw() {
+    const dpr = devicePixelRatio;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const w = canvas.width / dpr;
+    const h = canvas.height / dpr;
+    ctx.clearRect(0, 0, w, h);
+
+    const edges = state.edges;
+    const nodes = state.nodes;
+
+    // Draw edges
+    for (let i = 0; i < edges.length; i++) {
+      const [a, b] = edges[i];
+      ctx.beginPath();
+      ctx.moveTo(nodes[a].x, nodes[a].y);
+      ctx.lineTo(nodes[b].x, nodes[b].y);
+      ctx.strokeStyle = state.edgeCrossed[i] ? '#e74c3c' : '#2ecc71';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    // Draw nodes
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i];
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.radius, 0, 2 * Math.PI);
+      ctx.fillStyle = (state.dragNode === i) ? '#f1c40f' : '#3498db';
+      ctx.fill();
+      ctx.strokeStyle = '#1a1a2e';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    // Update UI
+    crossingsLabel.textContent = `Crossings: ${state.crossings}`;
+    crossingsLabel.className = state.crossings === 0 ? 'solved' : '';
+  }
+
+  // --- Interaction ---
+
+  function getCanvasPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return {
+      x: clientX - rect.left,
+      y: clientY - rect.top
+    };
+  }
+
+  function hitTestNode(mx, my) {
+    for (let i = state.nodes.length - 1; i >= 0; i--) {
+      const n = state.nodes[i];
+      const dx = mx - n.x;
+      const dy = my - n.y;
+      if (dx * dx + dy * dy <= (n.radius + 4) * (n.radius + 4)) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  function onPointerDown(e) {
+    if (state.solved) return;
+    e.preventDefault();
+    const pos = getCanvasPos(e);
+    const idx = hitTestNode(pos.x, pos.y);
+    if (idx >= 0) {
+      state.dragNode = idx;
+      state.offsetX = pos.x - state.nodes[idx].x;
+      state.offsetY = pos.y - state.nodes[idx].y;
+      canvas.classList.add('dragging');
+      draw();
+    }
+  }
+
+  function onPointerMove(e) {
+    if (state.dragNode === null) return;
+    e.preventDefault();
+    const pos = getCanvasPos(e);
+    state.nodes[state.dragNode].x = pos.x - state.offsetX;
+    state.nodes[state.dragNode].y = pos.y - state.offsetY;
+    countCrossings();
+    draw();
+  }
+
+  function onPointerUp(e) {
+    if (state.dragNode === null) return;
+    state.dragNode = null;
+    canvas.classList.remove('dragging');
+    countCrossings();
+    draw();
+    checkWin();
+  }
+
+  canvas.addEventListener('mousedown', onPointerDown);
+  canvas.addEventListener('mousemove', onPointerMove);
+  canvas.addEventListener('mouseup', onPointerUp);
+  canvas.addEventListener('mouseleave', onPointerUp);
+  canvas.addEventListener('touchstart', onPointerDown, { passive: false });
+  canvas.addEventListener('touchmove', onPointerMove, { passive: false });
+  canvas.addEventListener('touchend', onPointerUp);
+  canvas.addEventListener('touchcancel', onPointerUp);
+
+  // --- Win Detection ---
+
+  function checkWin() {
+    if (state.crossings === 0 && !state.solved) {
+      state.solved = true;
+      winOverlay.classList.add('visible');
+    }
+  }
+
+  // --- Level Management ---
+
+  function startLevel(level) {
+    state.level = level;
+    state.solved = false;
+    winOverlay.classList.remove('visible');
+    const nodeCount = nodesForLevel(level);
+    levelLabel.textContent = `Level ${level} (${nodeCount} nodes)`;
+    // Update difficulty dropdown to match
+    if (level >= 18) difficultySelect.value = 'expert';
+    else if (level >= 10) difficultySelect.value = 'hard';
+    else if (level >= 5) difficultySelect.value = 'medium';
+    else difficultySelect.value = 'easy';
+    generateGraph(nodeCount);
+    draw();
+  }
+
+  function nextLevel() {
+    startLevel(state.level + 1);
+  }
+
+  function restartLevel() {
+    state.solved = false;
+    winOverlay.classList.remove('visible');
+    scrambleNodes();
+    // Ensure crossings exist
+    for (let attempts = 0; attempts < 10; attempts++) {
+      countCrossings();
+      if (state.crossings > 0) break;
+      scrambleNodes();
+    }
+    draw();
+  }
+
+  // --- UI Bindings ---
+
+  difficultySelect.addEventListener('change', () => {
+    const band = BANDS[difficultySelect.value];
+    startLevel(band.startLevel);
+  });
+
+  restartBtn.addEventListener('click', restartLevel);
+  nextLevelBtn.addEventListener('click', nextLevel);
+
+  // --- Canvas Sizing ---
+
+  function resizeCanvas() {
+    const dpr = devicePixelRatio || 1;
+    const w = window.innerWidth;
+    const h = window.innerHeight - topbar.offsetHeight;
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+  }
+
+  window.addEventListener('resize', () => {
+    resizeCanvas();
+    draw();
+  });
+
+  // --- Init ---
+
+  resizeCanvas();
+  startLevel(1);
+})();
+</script>
+</body>
+</html>
