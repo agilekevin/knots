@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Tangle Ropes</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  overflow: hidden;
+  background: #2c1810;
+  color: #e0e0e0;
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+#header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  background: linear-gradient(180deg, #3d2415 0%, #2c1810 100%);
+  height: 56px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+#header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+#game-title {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #f5c563;
+}
+#home-link {
+  color: #8a7060;
+  text-decoration: none;
+  font-size: 13px;
+  transition: color 0.15s;
+}
+#home-link:hover { color: #c8a882; }
+#level-label {
+  font-size: 13px;
+  color: #8a7060;
+  font-weight: 500;
+}
+#header-center {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+#crossings-icon {
+  display: inline-block;
+  width: 16px; height: 16px;
+  position: relative;
+}
+#crossings-icon::before, #crossings-icon::after {
+  content: '';
+  position: absolute;
+  border-radius: 1px;
+  width: 16px; height: 2px;
+  top: 7px; left: 0;
+  transition: background 0.3s;
+  background: #ef4444;
+}
+#crossings-icon::before { transform: rotate(45deg); }
+#crossings-icon::after { transform: rotate(-45deg); }
+#crossings-icon.solved::before, #crossings-icon.solved::after {
+  background: #34d399;
+}
+#crossings {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #ef4444;
+  transition: color 0.3s;
+  min-width: 24px;
+  text-align: center;
+}
+#crossings.solved { color: #34d399; }
+#header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+#moves-label { font-size: 12px; color: #8a7060; }
+#moves {
+  font-size: 14px;
+  font-weight: 600;
+  color: #f5c563;
+  font-variant-numeric: tabular-nums;
+}
+
+.band-btn {
+  background: rgba(255,255,255,0.04);
+  color: #8a7060;
+  border: 1px solid rgba(255,255,255,0.08);
+  padding: 5px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.band-btn:hover { background: rgba(255,255,255,0.08); color: #c8a882; }
+.band-btn.active {
+  background: rgba(245, 197, 99, 0.15);
+  color: #f5c563;
+  border-color: rgba(245, 197, 99, 0.3);
+}
+
+.action-btn {
+  background: rgba(255,255,255,0.04);
+  color: #8a7060;
+  border: 1px solid rgba(255,255,255,0.08);
+  width: 34px; height: 34px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  font-size: 16px;
+  line-height: 1;
+}
+.action-btn:hover { background: rgba(255,255,255,0.08); color: #c8a882; }
+
+canvas {
+  display: block;
+  cursor: default;
+  touch-action: none;
+}
+canvas.hovering { cursor: grab; }
+canvas.dragging { cursor: grabbing; }
+
+#instructions {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(44, 24, 16, 0.92);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.08);
+  padding: 10px 20px;
+  border-radius: 10px;
+  font-size: 13px;
+  color: #8a7060;
+  transition: opacity 0.5s, transform 0.5s;
+  pointer-events: none;
+  z-index: 5;
+}
+#instructions.hidden {
+  opacity: 0;
+  transform: translateX(-50%) translateY(10px);
+}
+
+#win-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px);
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  z-index: 10;
+}
+#win-overlay.visible { display: flex; }
+#win-card {
+  background: linear-gradient(135deg, #3d2415 0%, #4a2d1a 100%);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 16px;
+  padding: 40px 48px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+#win-card h2 {
+  font-size: 36px;
+  font-weight: 700;
+  color: #f5c563;
+  margin-bottom: 6px;
+}
+#win-stats {
+  font-size: 14px;
+  color: #8a7060;
+  margin-bottom: 24px;
+}
+#win-stats span { color: #f5c563; font-weight: 600; }
+#next-level {
+  background: linear-gradient(135deg, #f5c563, #e8a33a);
+  color: #2c1810;
+  border: none;
+  padding: 12px 36px;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+  box-shadow: 0 4px 16px rgba(245, 197, 99, 0.25);
+}
+#next-level:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px rgba(245, 197, 99, 0.35);
+}
+
+@media (max-width: 700px) {
+  #header { flex-wrap: wrap; height: auto; padding: 8px 12px; gap: 6px; }
+  #header-left { order: 1; }
+  #header-center { order: 3; }
+  #header-right { order: 2; flex-wrap: wrap; gap: 6px; }
+  .band-btn { padding: 4px 8px; font-size: 11px; }
+}
+</style>
+</head>
+<body>
+
+<div id="header">
+  <div id="header-left">
+    <a id="home-link" href="index.html">&larr; Back</a>
+    <span id="game-title">TANGLE ROPES</span>
+    <span id="level-label">Level 1</span>
+  </div>
+  <div id="header-center">
+    <div id="crossings-icon"></div>
+    <span id="crossings">0</span>
+  </div>
+  <div id="header-right">
+    <span id="moves-label">Moves</span>
+    <span id="moves">0</span>
+    <div style="width:1px;height:20px;background:rgba(255,255,255,0.08);margin:0 4px"></div>
+    <button class="band-btn active" data-band="easy">Easy</button>
+    <button class="band-btn" data-band="medium">Medium</button>
+    <button class="band-btn" data-band="hard">Hard</button>
+    <button class="band-btn" data-band="expert">Expert</button>
+    <div style="width:1px;height:20px;background:rgba(255,255,255,0.08);margin:0 4px"></div>
+    <button class="action-btn" id="restart" title="Restart level">&#x21bb;</button>
+  </div>
+</div>
+
+<canvas id="canvas"></canvas>
+
+<div id="instructions">Drag the pins to untangle all the ropes</div>
+
+<div id="win-overlay">
+  <div id="win-card">
+    <h2>Untangled!</h2>
+    <div id="win-stats">Solved in <span id="win-moves">0</span> moves</div>
+    <button id="next-level">Next Level</button>
+  </div>
+</div>
+
+<script>
+(function() {
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const header = document.getElementById('header');
+  const levelLabel = document.getElementById('level-label');
+  const crossingsLabel = document.getElementById('crossings');
+  const crossingsIcon = document.getElementById('crossings-icon');
+  const movesLabel = document.getElementById('moves');
+  const winMovesLabel = document.getElementById('win-moves');
+  const restartBtn = document.getElementById('restart');
+  const winOverlay = document.getElementById('win-overlay');
+  const nextLevelBtn = document.getElementById('next-level');
+  const instructionsEl = document.getElementById('instructions');
+  const bandBtns = document.querySelectorAll('.band-btn');
+
+  const BANDS = {
+    easy:   { startLevel: 1 },
+    medium: { startLevel: 5 },
+    hard:   { startLevel: 10 },
+    expert: { startLevel: 18 }
+  };
+
+  const ROPE_COLORS = [
+    '#ef4444', '#f97316', '#eab308', '#22c55e',
+    '#3b82f6', '#a855f7', '#ec4899', '#14b8a6',
+    '#f43f5e', '#8b5cf6', '#06b6d4', '#84cc16'
+  ];
+
+  const state = {
+    level: 1,
+    pins: [],
+    ropes: [],
+    ropeCrossed: [],
+    crossings: 0,
+    dragPin: null,
+    hoverPin: null,
+    offsetX: 0,
+    offsetY: 0,
+    solved: false,
+    moves: 0,
+    instructionsDismissed: false,
+    winAnimTime: 0,
+    winAnimId: null,
+    woodGrainSeed: []  // Pre-computed grain for stable rendering
+  };
+
+  // --- Geometry ---
+
+  function orientation(px, py, qx, qy, rx, ry) {
+    const val = (qy - py) * (rx - qx) - (qx - px) * (ry - qy);
+    if (Math.abs(val) < 1e-10) return 0;
+    return val > 0 ? 1 : 2;
+  }
+
+  function segmentsIntersect(ax, ay, bx, by, cx, cy, dx, dy) {
+    const o1 = orientation(ax, ay, bx, by, cx, cy);
+    const o2 = orientation(ax, ay, bx, by, dx, dy);
+    const o3 = orientation(cx, cy, dx, dy, ax, ay);
+    const o4 = orientation(cx, cy, dx, dy, bx, by);
+    return (o1 !== o2 && o3 !== o4 && o1 !== 0 && o2 !== 0 && o3 !== 0 && o4 !== 0);
+  }
+
+  function chordsCrossOnCircle(a, b, c, d) {
+    if (a > b) { let t = a; a = b; b = t; }
+    if (c > d) { let t = c; c = d; d = t; }
+    return (a < c && c < b) !== (a < d && d < b);
+  }
+
+  // --- Seeded random for stable wood grain ---
+  function generateWoodGrain() {
+    const w = canvas.width / devicePixelRatio;
+    const h = canvas.height / devicePixelRatio;
+    state.woodGrainSeed = [];
+    let y = 0;
+    while (y < h) {
+      const gap = 10 + Math.random() * 10;
+      const points = [];
+      for (let x = 0; x <= w; x += 40) {
+        points.push({ x, dy: (Math.random() - 0.5) * 3 });
+      }
+      state.woodGrainSeed.push({ y, points });
+      y += gap;
+    }
+  }
+
+  // --- Graph Generation ---
+
+  function nodesForLevel(level) {
+    return 3 + level;
+  }
+
+  function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
+  function generateLevel(pinCount) {
+    const w = canvas.width / devicePixelRatio;
+    const h = canvas.height / devicePixelRatio;
+    const cx = w / 2;
+    const cy = h / 2;
+    const R = Math.min(cx, cy) * 0.6;
+    const pinRadius = Math.max(12, Math.min(22, 280 / pinCount));
+
+    const fixedCount = state.level >= 5 ? Math.max(1, Math.floor(pinCount * 0.2)) : 0;
+    const fixedIndices = new Set();
+    if (fixedCount > 0) {
+      const candidates = Array.from({ length: pinCount }, (_, i) => i);
+      shuffle(candidates);
+      for (let i = 0; i < fixedCount; i++) fixedIndices.add(candidates[i]);
+    }
+
+    state.pins = [];
+    for (let i = 0; i < pinCount; i++) {
+      const angle = (2 * Math.PI * i) / pinCount - Math.PI / 2;
+      state.pins.push({
+        x: cx + R * Math.cos(angle),
+        y: cy + R * Math.sin(angle),
+        radius: pinRadius,
+        fixed: fixedIndices.has(i)
+      });
+    }
+
+    state.ropes = [];
+    const edgeSet = new Set();
+
+    function edgeKey(a, b) { return a < b ? `${a},${b}` : `${b},${a}`; }
+
+    function addRope(a, b) {
+      const key = edgeKey(a, b);
+      if (edgeSet.has(key)) return false;
+      for (const rope of state.ropes) {
+        if (rope.a === a || rope.a === b || rope.b === a || rope.b === b) continue;
+        if (chordsCrossOnCircle(a, b, rope.a, rope.b)) return false;
+      }
+      edgeSet.add(key);
+      state.ropes.push({ a, b, color: ROPE_COLORS[state.ropes.length % ROPE_COLORS.length] });
+      return true;
+    }
+
+    for (let i = 0; i < pinCount; i++) {
+      const a = i, b = (i + 1) % pinCount;
+      edgeSet.add(edgeKey(a, b));
+      state.ropes.push({ a, b, color: ROPE_COLORS[i % ROPE_COLORS.length] });
+    }
+
+    const maxSkip = Math.max(2, Math.floor(pinCount / 3));
+    const candidates = [];
+    for (let skip = 2; skip <= maxSkip; skip++) {
+      for (let i = 0; i < pinCount; i++) {
+        candidates.push([i, (i + skip) % pinCount]);
+      }
+    }
+    shuffle(candidates);
+
+    const targetEdges = Math.floor(1.8 * pinCount);
+    for (const [a, b] of candidates) {
+      if (state.ropes.length >= targetEdges) break;
+      addRope(a, b);
+    }
+
+    generateWoodGrain();
+    scramblePins();
+
+    for (let attempts = 0; attempts < 10; attempts++) {
+      countCrossings();
+      if (state.crossings > 0) break;
+      scramblePins();
+    }
+  }
+
+  function scramblePins() {
+    const w = canvas.width / devicePixelRatio;
+    const h = canvas.height / devicePixelRatio;
+    const mx = w * 0.15, my = h * 0.15;
+    for (const pin of state.pins) {
+      if (pin.fixed) continue;
+      pin.x = mx + Math.random() * (w - 2 * mx);
+      pin.y = my + Math.random() * (h - 2 * my);
+    }
+  }
+
+  // --- Crossing Detection ---
+
+  function countCrossings() {
+    const ropes = state.ropes;
+    const pins = state.pins;
+    state.ropeCrossed = new Array(ropes.length).fill(false);
+    let count = 0;
+
+    for (let i = 0; i < ropes.length; i++) {
+      for (let j = i + 1; j < ropes.length; j++) {
+        const ri = ropes[i], rj = ropes[j];
+        if (ri.a === rj.a || ri.a === rj.b || ri.b === rj.a || ri.b === rj.b) continue;
+        if (segmentsIntersect(
+          pins[ri.a].x, pins[ri.a].y, pins[ri.b].x, pins[ri.b].y,
+          pins[rj.a].x, pins[rj.a].y, pins[rj.b].x, pins[rj.b].y
+        )) {
+          count++;
+          state.ropeCrossed[i] = true;
+          state.ropeCrossed[j] = true;
+        }
+      }
+    }
+    state.crossings = count;
+  }
+
+  // --- Rendering ---
+
+  function drawBoard() {
+    const w = canvas.width / devicePixelRatio;
+    const h = canvas.height / devicePixelRatio;
+
+    const grad = ctx.createLinearGradient(0, 0, w, h);
+    grad.addColorStop(0, '#3d2a1a');
+    grad.addColorStop(0.3, '#4a3222');
+    grad.addColorStop(0.5, '#3d2a1a');
+    grad.addColorStop(0.7, '#4a3222');
+    grad.addColorStop(1, '#3d2a1a');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+
+    // Stable pre-computed grain lines
+    ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+    ctx.lineWidth = 1;
+    for (const line of state.woodGrainSeed) {
+      ctx.beginPath();
+      ctx.moveTo(0, line.y);
+      for (const pt of line.points) {
+        ctx.lineTo(pt.x, line.y + pt.dy);
+      }
+      ctx.stroke();
+    }
+  }
+
+  function drawRope(ax, ay, bx, by, color, crossed, glowPhase) {
+    // Shadow
+    ctx.beginPath();
+    ctx.moveTo(ax + 2, ay + 3);
+    ctx.lineTo(bx + 2, by + 3);
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+    ctx.lineWidth = 8;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    if (crossed) {
+      // Crossed: dimmed, dashed-ish appearance
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(bx, by);
+      ctx.globalAlpha = 0.35;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 5;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+      ctx.globalAlpha = 1.0;
+    } else {
+      // Uncrossed: full color with glow
+      // Outer glow
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(bx, by);
+      const glowAlpha = glowPhase !== undefined ? 0.15 + 0.1 * Math.sin(glowPhase) : 0.15;
+      ctx.strokeStyle = color.replace(')', `, ${glowAlpha})`).replace('rgb', 'rgba').replace('#', '');
+      // Use hex-to-glow fallback
+      ctx.globalAlpha = glowAlpha;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 14;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+      ctx.globalAlpha = 1.0;
+
+      // Rope body
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(bx, by);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 6;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      // Center highlight
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(bx, by);
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  }
+
+  function drawPin(pin, index, pulsePhase) {
+    const x = pin.x, y = pin.y;
+    let r = pin.radius;
+    const isDragging = (state.dragPin === index);
+    const isHovering = (state.hoverPin === index);
+    const isFixed = pin.fixed;
+
+    // Win animation pulse
+    if (pulsePhase !== undefined) {
+      r += 2 * Math.sin(pulsePhase + index * 0.5);
+    }
+
+    // Pin shadow (ellipse below)
+    ctx.beginPath();
+    ctx.ellipse(x + 1, y + r * 0.8, r * 0.9, r * 0.3, 0, 0, 2 * Math.PI);
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fill();
+
+    // Hover/drag glow ring (drawn behind pin)
+    if (isDragging || (isHovering && !isFixed)) {
+      ctx.beginPath();
+      ctx.arc(x, y, r + 10, 0, 2 * Math.PI);
+      ctx.fillStyle = isDragging
+        ? 'rgba(251, 191, 36, 0.15)'
+        : 'rgba(255,255,255,0.08)';
+      ctx.fill();
+    }
+
+    // Pin base ring
+    ctx.beginPath();
+    ctx.arc(x, y, r + 2, 0, 2 * Math.PI);
+    ctx.fillStyle = isFixed ? '#5a3a28' : '#2a2a3a';
+    ctx.fill();
+
+    // Pin body
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, 2 * Math.PI);
+    const grad = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.1, x, y, r);
+    if (isFixed) {
+      grad.addColorStop(0, '#a08868');
+      grad.addColorStop(1, '#5C4033');
+    } else if (isDragging) {
+      grad.addColorStop(0, '#fde68a');
+      grad.addColorStop(1, '#f59e0b');
+    } else if (isHovering) {
+      grad.addColorStop(0, '#f0f0f0');
+      grad.addColorStop(1, '#b0b0c0');
+    } else {
+      grad.addColorStop(0, '#d4d4dc');
+      grad.addColorStop(1, '#8888a0');
+    }
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Border
+    ctx.strokeStyle = isDragging
+      ? 'rgba(251, 191, 36, 0.7)'
+      : isFixed ? 'rgba(160, 136, 104, 0.6)' : 'rgba(255,255,255,0.2)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Specular highlight
+    ctx.beginPath();
+    ctx.arc(x - r * 0.25, y - r * 0.3, r * 0.3, 0, 2 * Math.PI);
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.fill();
+
+    // Center dimple
+    ctx.beginPath();
+    ctx.arc(x, y, r * 0.12, 0, 2 * Math.PI);
+    ctx.fillStyle = isFixed ? '#3d2a1a' : 'rgba(0,0,0,0.2)';
+    ctx.fill();
+
+    // Fixed pin indicator: ring + lock icon
+    if (isFixed) {
+      // Distinct colored ring around pin
+      ctx.beginPath();
+      ctx.arc(x, y, r + 4, 0, 2 * Math.PI);
+      ctx.strokeStyle = 'rgba(160, 136, 104, 0.7)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([3, 3]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Lock symbol below
+      const ly = y + r + 11;
+      // Lock body
+      ctx.fillStyle = 'rgba(160, 136, 104, 0.8)';
+      ctx.beginPath();
+      ctx.roundRect(x - 5, ly - 2, 10, 8, 1.5);
+      ctx.fill();
+      // Lock shackle
+      ctx.beginPath();
+      ctx.arc(x, ly - 2, 4, Math.PI, 0);
+      ctx.strokeStyle = 'rgba(160, 136, 104, 0.8)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+  }
+
+  function draw(winPhase) {
+    const dpr = devicePixelRatio;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const w = canvas.width / dpr;
+    const h = canvas.height / dpr;
+    ctx.clearRect(0, 0, w, h);
+
+    drawBoard();
+
+    const ropes = state.ropes;
+    const pins = state.pins;
+
+    // Draw crossed ropes first (behind), then uncrossed (in front)
+    for (let i = 0; i < ropes.length; i++) {
+      if (!state.ropeCrossed[i]) continue;
+      const r = ropes[i];
+      drawRope(pins[r.a].x, pins[r.a].y, pins[r.b].x, pins[r.b].y, r.color, true);
+    }
+    for (let i = 0; i < ropes.length; i++) {
+      if (state.ropeCrossed[i]) continue;
+      const r = ropes[i];
+      drawRope(pins[r.a].x, pins[r.a].y, pins[r.b].x, pins[r.b].y, r.color, false, winPhase);
+    }
+
+    // Draw pins
+    for (let i = 0; i < pins.length; i++) {
+      drawPin(pins[i], i, winPhase);
+    }
+
+    // Update header
+    crossingsLabel.textContent = state.crossings;
+    const solved = state.crossings === 0;
+    crossingsLabel.className = solved ? 'solved' : '';
+    crossingsIcon.className = solved ? 'solved' : '';
+    movesLabel.textContent = state.moves;
+  }
+
+  // --- Win Animation ---
+
+  function startWinAnimation() {
+    state.winAnimTime = 0;
+    const startTime = performance.now();
+    function animFrame(now) {
+      const elapsed = now - startTime;
+      state.winAnimTime = elapsed;
+      const phase = elapsed * 0.003; // Slow pulse
+      draw(phase);
+      if (elapsed < 1500) {
+        state.winAnimId = requestAnimationFrame(animFrame);
+      } else {
+        // Show overlay after animation
+        winMovesLabel.textContent = state.moves;
+        winOverlay.classList.add('visible');
+      }
+    }
+    state.winAnimId = requestAnimationFrame(animFrame);
+  }
+
+  function stopWinAnimation() {
+    if (state.winAnimId) {
+      cancelAnimationFrame(state.winAnimId);
+      state.winAnimId = null;
+    }
+  }
+
+  // --- Interaction ---
+
+  function getCanvasPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: clientX - rect.left, y: clientY - rect.top };
+  }
+
+  function hitTestPin(mx, my) {
+    for (let i = state.pins.length - 1; i >= 0; i--) {
+      const p = state.pins[i];
+      const dx = mx - p.x, dy = my - p.y;
+      if (dx * dx + dy * dy <= (p.radius + 6) * (p.radius + 6)) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  function dismissInstructions() {
+    if (!state.instructionsDismissed) {
+      state.instructionsDismissed = true;
+      instructionsEl.classList.add('hidden');
+    }
+  }
+
+  function onPointerDown(e) {
+    if (state.solved) return;
+    e.preventDefault();
+    dismissInstructions();
+    const pos = getCanvasPos(e);
+    const idx = hitTestPin(pos.x, pos.y);
+    if (idx >= 0 && !state.pins[idx].fixed) {
+      state.dragPin = idx;
+      state.offsetX = pos.x - state.pins[idx].x;
+      state.offsetY = pos.y - state.pins[idx].y;
+      canvas.classList.remove('hovering');
+      canvas.classList.add('dragging');
+      draw();
+    }
+  }
+
+  function onPointerMove(e) {
+    const pos = getCanvasPos(e);
+
+    if (state.dragPin !== null) {
+      e.preventDefault();
+      state.pins[state.dragPin].x = pos.x - state.offsetX;
+      state.pins[state.dragPin].y = pos.y - state.offsetY;
+      countCrossings();
+      draw();
+      return;
+    }
+
+    if (!state.solved) {
+      const idx = hitTestPin(pos.x, pos.y);
+      const canGrab = idx >= 0 && !state.pins[idx].fixed;
+      if (idx !== state.hoverPin) {
+        state.hoverPin = idx >= 0 ? idx : null;
+        canvas.classList.toggle('hovering', canGrab);
+        draw();
+      }
+    }
+  }
+
+  function onPointerUp(e) {
+    if (state.dragPin === null) return;
+    state.moves++;
+    state.dragPin = null;
+    canvas.classList.remove('dragging');
+    countCrossings();
+    draw();
+    checkWin();
+  }
+
+  canvas.addEventListener('mousedown', onPointerDown);
+  canvas.addEventListener('mousemove', onPointerMove);
+  canvas.addEventListener('mouseup', onPointerUp);
+  canvas.addEventListener('mouseleave', (e) => {
+    if (state.dragPin !== null) onPointerUp(e);
+    if (state.hoverPin !== null) {
+      state.hoverPin = null;
+      canvas.classList.remove('hovering');
+      draw();
+    }
+  });
+  canvas.addEventListener('touchstart', onPointerDown, { passive: false });
+  canvas.addEventListener('touchmove', onPointerMove, { passive: false });
+  canvas.addEventListener('touchend', onPointerUp);
+  canvas.addEventListener('touchcancel', onPointerUp);
+
+  // --- Win ---
+
+  function checkWin() {
+    if (state.crossings === 0 && !state.solved) {
+      state.solved = true;
+      startWinAnimation();
+    }
+  }
+
+  // --- Level Management ---
+
+  function updateBandButtons() {
+    const level = state.level;
+    let active = 'easy';
+    if (level >= 18) active = 'expert';
+    else if (level >= 10) active = 'hard';
+    else if (level >= 5) active = 'medium';
+    bandBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.band === active));
+  }
+
+  function startLevel(level) {
+    stopWinAnimation();
+    state.level = level;
+    state.solved = false;
+    state.moves = 0;
+    state.hoverPin = null;
+    state.dragPin = null;
+    winOverlay.classList.remove('visible');
+    const pinCount = nodesForLevel(level);
+    levelLabel.textContent = `Level ${level}`;
+    updateBandButtons();
+    generateLevel(pinCount);
+    draw();
+  }
+
+  function restartLevel() {
+    stopWinAnimation();
+    state.solved = false;
+    state.moves = 0;
+    state.hoverPin = null;
+    state.dragPin = null;
+    winOverlay.classList.remove('visible');
+    scramblePins();
+    for (let attempts = 0; attempts < 10; attempts++) {
+      countCrossings();
+      if (state.crossings > 0) break;
+      scramblePins();
+    }
+    draw();
+  }
+
+  // --- UI Bindings ---
+
+  bandBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      startLevel(BANDS[btn.dataset.band].startLevel);
+      dismissInstructions();
+    });
+  });
+
+  restartBtn.addEventListener('click', restartLevel);
+  nextLevelBtn.addEventListener('click', () => startLevel(state.level + 1));
+
+  // --- Canvas Sizing ---
+
+  function resizeCanvas() {
+    const dpr = devicePixelRatio || 1;
+    const w = window.innerWidth;
+    const h = window.innerHeight - header.offsetHeight;
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+  }
+
+  window.addEventListener('resize', () => { resizeCanvas(); draw(); });
+
+  // --- Init ---
+  resizeCanvas();
+  startLevel(1);
+})();
+</script>
+</body>
+</html>
