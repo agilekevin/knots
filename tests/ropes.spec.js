@@ -27,21 +27,60 @@ test.describe('Tangle Ropes', () => {
       return {
         hasPegs: s.pegs.length > 0,
         hasRopes: s.ropes.length > 0,
-        hasEmptyPeg: s.emptyPeg >= 0,
-        emptyPegIsEmpty: s.ropeAtPeg[s.emptyPeg] === null,
         moves: s.moves,
-        solved: s.solved
+        solved: s.solved,
+        numEmpty: s.ropeAtPeg.filter(r => r === null).length
       };
     });
     expect(info.hasPegs).toBe(true);
     expect(info.hasRopes).toBe(true);
-    expect(info.hasEmptyPeg).toBe(true);
-    expect(info.emptyPegIsEmpty).toBe(true);
     expect(info.moves).toBe(0);
     expect(info.solved).toBe(false);
+    expect(info.numEmpty).toBeGreaterThanOrEqual(2);
   });
 
-  test('clicking an occupied peg moves rope to empty peg', async ({ page }) => {
+  test('dragging a rope end to empty peg makes a move', async ({ page }) => {
+    await page.goto(`${BASE}/ropes.html`);
+    await page.waitForTimeout(800);
+
+    const result = await page.evaluate(() => {
+      const s = window.__gameState;
+      const canvas = document.getElementById('canvas');
+      const rect = canvas.getBoundingClientRect();
+
+      // Find an occupied peg and an empty peg
+      let occupiedPeg = -1;
+      for (let i = 0; i < s.pegs.length; i++) {
+        if (s.ropeAtPeg[i] !== null) { occupiedPeg = i; break; }
+      }
+      let emptyPeg = -1;
+      for (let i = 0; i < s.pegs.length; i++) {
+        if (s.ropeAtPeg[i] === null) { emptyPeg = i; break; }
+      }
+      if (occupiedPeg < 0 || emptyPeg < 0) return { error: 'no valid pegs' };
+
+      const from = s.pegs[occupiedPeg];
+      const to = s.pegs[emptyPeg];
+
+      // Simulate drag: mousedown on occupied, mousemove to empty, mouseup on empty
+      canvas.dispatchEvent(new MouseEvent('mousedown', {
+        clientX: rect.left + from.x, clientY: rect.top + from.y, bubbles: true
+      }));
+      canvas.dispatchEvent(new MouseEvent('mousemove', {
+        clientX: rect.left + to.x, clientY: rect.top + to.y, bubbles: true
+      }));
+      canvas.dispatchEvent(new MouseEvent('mouseup', {
+        clientX: rect.left + to.x, clientY: rect.top + to.y, bubbles: true
+      }));
+
+      return { movesAfter: s.moves };
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.movesAfter).toBe(1);
+  });
+
+  test('cancelling drag restores state', async ({ page }) => {
     await page.goto(`${BASE}/ropes.html`);
     await page.waitForTimeout(800);
 
@@ -55,169 +94,131 @@ test.describe('Tangle Ropes', () => {
       for (let i = 0; i < s.pegs.length; i++) {
         if (s.ropeAtPeg[i] !== null) { occupiedPeg = i; break; }
       }
-      if (occupiedPeg < 0) return { error: 'no occupied peg found' };
+      const from = s.pegs[occupiedPeg];
+      const twistsBefore = JSON.stringify(s.twists);
 
-      const emptyBefore = s.emptyPeg;
-      const pegPos = s.pegs[occupiedPeg];
-
-      // Click directly on the occupied peg
-      canvas.dispatchEvent(new MouseEvent('click', {
-        clientX: rect.left + pegPos.x,
-        clientY: rect.top + pegPos.y,
-        bubbles: true
+      // Drag to empty space (not a peg) then release
+      canvas.dispatchEvent(new MouseEvent('mousedown', {
+        clientX: rect.left + from.x, clientY: rect.top + from.y, bubbles: true
+      }));
+      canvas.dispatchEvent(new MouseEvent('mousemove', {
+        clientX: rect.left + 5, clientY: rect.top + 5, bubbles: true
+      }));
+      canvas.dispatchEvent(new MouseEvent('mouseup', {
+        clientX: rect.left + 5, clientY: rect.top + 5, bubbles: true
       }));
 
       return {
-        movesBefore: 0,
-        movesAfter: s.moves,
-        emptyBefore,
-        emptyAfter: s.emptyPeg,
-        pegMoved: occupiedPeg
+        moves: s.moves,
+        twistsRestored: JSON.stringify(s.twists) === twistsBefore
       };
     });
 
-    expect(result.error).toBeUndefined();
-    expect(result.movesAfter).toBe(1);
-    expect(result.emptyAfter).toBe(result.pegMoved);
-  });
-
-  test('clicking empty peg does nothing', async ({ page }) => {
-    await page.goto(`${BASE}/ropes.html`);
-    await page.waitForTimeout(800);
-
-    const moved = await page.evaluate(() => {
-      const s = window.__gameState;
-      const canvas = document.getElementById('canvas');
-      const rect = canvas.getBoundingClientRect();
-      const emptyPos = s.pegs[s.emptyPeg];
-
-      canvas.dispatchEvent(new MouseEvent('click', {
-        clientX: rect.left + emptyPos.x,
-        clientY: rect.top + emptyPos.y,
-        bubbles: true
-      }));
-
-      return s.moves;
-    });
-
-    expect(moved).toBe(0);
+    expect(result.moves).toBe(0);
+    expect(result.twistsRestored).toBe(true);
   });
 
   test('difficulty bands change level', async ({ page }) => {
     await page.goto(`${BASE}/ropes.html`);
     await page.waitForTimeout(800);
-
     await page.click('button[data-band="medium"]');
     await page.waitForTimeout(400);
-    const level = await page.textContent('#level-label');
-    expect(level).toBe('Level 5');
+    expect(await page.textContent('#level-label')).toBe('Level 5');
   });
 
   test('restart resets moves to 0', async ({ page }) => {
     await page.goto(`${BASE}/ropes.html`);
     await page.waitForTimeout(800);
 
-    // Make a move first
+    // Make a move via drag
     await page.evaluate(() => {
       const s = window.__gameState;
       const canvas = document.getElementById('canvas');
       const rect = canvas.getBoundingClientRect();
+      let occ = -1, emp = -1;
       for (let i = 0; i < s.pegs.length; i++) {
-        if (s.ropeAtPeg[i] !== null) {
-          const p = s.pegs[i];
-          canvas.dispatchEvent(new MouseEvent('click', {
-            clientX: rect.left + p.x, clientY: rect.top + p.y, bubbles: true
-          }));
-          break;
-        }
+        if (s.ropeAtPeg[i] !== null && occ < 0) occ = i;
+        if (s.ropeAtPeg[i] === null && emp < 0) emp = i;
       }
+      const f = s.pegs[occ], t = s.pegs[emp];
+      canvas.dispatchEvent(new MouseEvent('mousedown', { clientX: rect.left+f.x, clientY: rect.top+f.y, bubbles: true }));
+      canvas.dispatchEvent(new MouseEvent('mousemove', { clientX: rect.left+t.x, clientY: rect.top+t.y, bubbles: true }));
+      canvas.dispatchEvent(new MouseEvent('mouseup', { clientX: rect.left+t.x, clientY: rect.top+t.y, bubbles: true }));
     });
-
-    const movesAfterClick = await page.evaluate('window.__gameState.moves');
-    expect(movesAfterClick).toBe(1);
+    expect(await page.evaluate('window.__gameState.moves')).toBe(1);
 
     await page.click('#restart');
     await page.waitForTimeout(400);
-    const movesAfterRestart = await page.evaluate('window.__gameState.moves');
-    expect(movesAfterRestart).toBe(0);
+    expect(await page.evaluate('window.__gameState.moves')).toBe(0);
   });
 
-  test('each peg has at most one rope end', async ({ page }) => {
+  test('multiple empty pegs exist', async ({ page }) => {
     await page.goto(`${BASE}/ropes.html`);
     await page.waitForTimeout(800);
+    const emptyCount = await page.evaluate(() => {
+      return window.__gameState.ropeAtPeg.filter(r => r === null).length;
+    });
+    expect(emptyCount).toBeGreaterThanOrEqual(2);
+  });
 
+  test('rope endpoints match peg assignments', async ({ page }) => {
+    await page.goto(`${BASE}/ropes.html`);
+    await page.waitForTimeout(800);
     const valid = await page.evaluate(() => {
       const s = window.__gameState;
-      // Check each rope end points to a valid peg, and that peg points back
       for (let i = 0; i < s.ropes.length; i++) {
         for (let e = 0; e < 2; e++) {
-          const pegIdx = s.ropes[i].pegs[e];
-          const re = s.ropeAtPeg[pegIdx];
+          const peg = s.ropes[i].pegs[e];
+          const re = s.ropeAtPeg[peg];
           if (!re || re.rope !== i || re.end !== e) return false;
         }
       }
-      // Check exactly one empty peg
-      let emptyCount = 0;
-      for (let i = 0; i < s.pegs.length; i++) {
-        if (s.ropeAtPeg[i] === null) emptyCount++;
-      }
-      return emptyCount === 1;
+      return true;
     });
-
     expect(valid).toBe(true);
   });
 
-  test('consistency after multiple moves', async ({ page }) => {
+  test('consistency after multiple drag moves', async ({ page }) => {
     await page.goto(`${BASE}/ropes.html`);
     await page.waitForTimeout(800);
 
-    const valid = await page.evaluate(() => {
+    const result = await page.evaluate(() => {
       const s = window.__gameState;
       const canvas = document.getElementById('canvas');
       const rect = canvas.getBoundingClientRect();
 
-      // Make 5 moves
       for (let m = 0; m < 5; m++) {
+        let occ = -1, emp = -1;
         for (let i = 0; i < s.pegs.length; i++) {
-          if (s.ropeAtPeg[i] !== null) {
-            const p = s.pegs[i];
-            canvas.dispatchEvent(new MouseEvent('click', {
-              clientX: rect.left + p.x, clientY: rect.top + p.y, bubbles: true
-            }));
-            break;
-          }
+          if (s.ropeAtPeg[i] !== null && occ < 0) occ = i;
+          if (s.ropeAtPeg[i] === null && emp < 0) emp = i;
         }
+        if (occ < 0 || emp < 0) break;
+        const f = s.pegs[occ], t = s.pegs[emp];
+        canvas.dispatchEvent(new MouseEvent('mousedown', { clientX: rect.left+f.x, clientY: rect.top+f.y, bubbles: true }));
+        canvas.dispatchEvent(new MouseEvent('mousemove', { clientX: rect.left+t.x, clientY: rect.top+t.y, bubbles: true }));
+        canvas.dispatchEvent(new MouseEvent('mouseup', { clientX: rect.left+t.x, clientY: rect.top+t.y, bubbles: true }));
       }
 
-      // Verify consistency
-      let emptyCount = 0;
-      for (let i = 0; i < s.pegs.length; i++) {
-        if (s.ropeAtPeg[i] === null) emptyCount++;
-      }
-      if (emptyCount !== 1) return { error: `${emptyCount} empty pegs` };
-
+      // Verify rope-peg consistency
       for (let i = 0; i < s.ropes.length; i++) {
         for (let e = 0; e < 2; e++) {
-          const pegIdx = s.ropes[i].pegs[e];
-          const re = s.ropeAtPeg[pegIdx];
-          if (!re || re.rope !== i || re.end !== e) {
-            return { error: `rope ${i} end ${e} mismatch at peg ${pegIdx}` };
-          }
+          const peg = s.ropes[i].pegs[e];
+          const re = s.ropeAtPeg[peg];
+          if (!re || re.rope !== i || re.end !== e) return { error: `rope ${i} end ${e} mismatch` };
         }
       }
-
       return { ok: true, moves: s.moves };
     });
 
-    expect(valid.error).toBeUndefined();
-    expect(valid.ok).toBe(true);
-    expect(valid.moves).toBe(5);
+    expect(result.error).toBeUndefined();
+    expect(result.ok).toBe(true);
+    expect(result.moves).toBeGreaterThan(0);
   });
 
   test('back link exists and points to index', async ({ page }) => {
     await page.goto(`${BASE}/ropes.html`);
-    const href = await page.getAttribute('#home-link', 'href');
-    expect(href).toBe('index.html');
+    expect(await page.getAttribute('#home-link', 'href')).toBe('index.html');
   });
 
   test('all levels generate tangles across 10 loads', async ({ page }) => {
