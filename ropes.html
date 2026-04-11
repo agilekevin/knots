@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Tangle Ropes</title>
+<title>Tangle Ropes — Braiding Test</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -19,150 +19,67 @@ body {
 }
 #header-left { display: flex; align-items: center; gap: 16px; }
 #game-title { font-size: 20px; font-weight: 700; letter-spacing: 1px; color: #f5c563; }
-#home-link { color: #8a7060; text-decoration: none; font-size: 13px; transition: color 0.15s; }
-#home-link:hover { color: #c8a882; }
-#level-label { font-size: 13px; color: #8a7060; font-weight: 500; }
-#header-center { display: flex; align-items: center; gap: 6px; }
-#crossings-icon { display: inline-block; width: 16px; height: 16px; position: relative; }
-#crossings-icon::before, #crossings-icon::after {
-  content: ''; position: absolute; border-radius: 1px;
-  width: 16px; height: 2px; top: 7px; left: 0; transition: background 0.3s; background: #ef4444;
+#home-link { color: #8a7060; text-decoration: none; font-size: 13px; }
+#debug {
+  font-size: 13px; color: #8a7060; font-family: monospace;
 }
-#crossings-icon::before { transform: rotate(45deg); }
-#crossings-icon::after { transform: rotate(-45deg); }
-#crossings-icon.solved::before, #crossings-icon.solved::after { background: #34d399; }
-#tangles { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums;
-  color: #ef4444; transition: color 0.3s; min-width: 24px; text-align: center; }
-#tangles.solved { color: #34d399; }
-#header-right { display: flex; align-items: center; gap: 10px; }
-#moves-label { font-size: 12px; color: #8a7060; }
-#moves { font-size: 14px; font-weight: 600; color: #f5c563; font-variant-numeric: tabular-nums; }
-.band-btn {
-  background: rgba(255,255,255,0.04); color: #8a7060;
-  border: 1px solid rgba(255,255,255,0.08); padding: 5px 12px;
-  border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500;
-  transition: all 0.15s; white-space: nowrap;
+#debug .val { color: #f5c563; font-weight: 600; }
+#debug .label { color: #6a5a4a; }
+button.reset-btn {
+  background: rgba(255,255,255,0.06); color: #8a7060;
+  border: 1px solid rgba(255,255,255,0.1); padding: 6px 16px;
+  border-radius: 6px; cursor: pointer; font-size: 13px;
 }
-.band-btn:hover { background: rgba(255,255,255,0.08); color: #c8a882; }
-.band-btn.active { background: rgba(245,197,99,0.15); color: #f5c563; border-color: rgba(245,197,99,0.3); }
-.action-btn {
-  background: rgba(255,255,255,0.04); color: #8a7060;
-  border: 1px solid rgba(255,255,255,0.08); width: 34px; height: 34px;
-  border-radius: 6px; cursor: pointer; display: flex; align-items: center;
-  justify-content: center; transition: all 0.15s; font-size: 16px; line-height: 1;
-}
-.action-btn:hover { background: rgba(255,255,255,0.08); color: #c8a882; }
+button.reset-btn:hover { background: rgba(255,255,255,0.1); color: #c8a882; }
 canvas { display: block; cursor: default; touch-action: none; }
 canvas.can-grab { cursor: grab; }
 canvas.dragging { cursor: grabbing; }
-#instructions {
-  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-  background: rgba(44,24,16,0.92); backdrop-filter: blur(12px);
-  border: 1px solid rgba(255,255,255,0.08); padding: 10px 20px;
-  border-radius: 10px; font-size: 13px; color: #8a7060;
-  transition: opacity 0.5s, transform 0.5s; pointer-events: none;
-  z-index: 5; text-align: center; max-width: 400px;
-}
-#instructions.hidden { opacity: 0; transform: translateX(-50%) translateY(10px); }
-#win-overlay {
-  display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.6); backdrop-filter: blur(6px);
-  justify-content: center; align-items: center; flex-direction: column; z-index: 10;
-}
-#win-overlay.visible { display: flex; }
-#win-card {
-  background: linear-gradient(135deg, #3d2415 0%, #4a2d1a 100%);
-  border: 1px solid rgba(255,255,255,0.1); border-radius: 16px;
-  padding: 40px 48px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-}
-#win-card h2 { font-size: 36px; font-weight: 700; color: #f5c563; margin-bottom: 6px; }
-#win-stats { font-size: 14px; color: #8a7060; margin-bottom: 24px; }
-#win-stats span { color: #f5c563; font-weight: 600; }
-#next-level {
-  background: linear-gradient(135deg, #f5c563, #e8a33a); color: #2c1810;
-  border: none; padding: 12px 36px; border-radius: 10px; font-size: 16px;
-  font-weight: 600; cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
-  box-shadow: 0 4px 16px rgba(245,197,99,0.25);
-}
-#next-level:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(245,197,99,0.35); }
-@media (max-width: 700px) {
-  #header { flex-wrap: wrap; height: auto; padding: 8px 12px; gap: 6px; }
-  #header-left { order: 1; } #header-center { order: 3; }
-  #header-right { order: 2; flex-wrap: wrap; gap: 6px; }
-  .band-btn { padding: 4px 8px; font-size: 11px; }
-}
 </style>
 </head>
 <body>
 <div id="header">
   <div id="header-left">
     <a id="home-link" href="index.html">&larr; Back</a>
-    <span id="game-title">TANGLE ROPES</span>
-    <span id="level-label">Level 1</span>
-    <span style="font-size:10px;color:#5a4a3a">v0.7</span>
+    <span id="game-title">BRAID TEST</span>
+    <span style="font-size:10px;color:#5a4a3a">v0.8</span>
   </div>
-  <div id="header-center">
-    <div id="crossings-icon"></div>
-    <span id="tangles">0</span>
+  <div id="debug">
+    <span class="label">twists:</span> <span class="val" id="d-twists">0</span>
+    &nbsp;
+    <span class="label">z-order:</span> <span class="val" id="d-zorder">R0:0 R1:1</span>
+    &nbsp;
+    <span class="label">moves:</span> <span class="val" id="d-moves">0</span>
+    &nbsp;
+    <span class="label">last:</span> <span class="val" id="d-last">—</span>
   </div>
-  <div id="header-right">
-    <span id="moves-label">Moves</span>
-    <span id="moves">0</span>
-    <div style="width:1px;height:20px;background:rgba(255,255,255,0.08);margin:0 4px"></div>
-    <button class="band-btn active" data-band="easy">Easy</button>
-    <button class="band-btn" data-band="medium">Medium</button>
-    <button class="band-btn" data-band="hard">Hard</button>
-    <button class="band-btn" data-band="expert">Expert</button>
-    <div style="width:1px;height:20px;background:rgba(255,255,255,0.08);margin:0 4px"></div>
-    <button class="action-btn" id="restart" title="Restart level">&#x21bb;</button>
-  </div>
+  <button class="reset-btn" id="restart">Reset</button>
 </div>
 <canvas id="canvas"></canvas>
-<div id="instructions">Drag a rope end to an empty peg to untangle.<br>Ropes twist when they cross — be strategic!</div>
-<div id="win-overlay">
-  <div id="win-card">
-    <h2>Untangled!</h2>
-    <div id="win-stats">Solved in <span id="win-moves">0</span> moves</div>
-    <button id="next-level">Next Level</button>
-  </div>
-</div>
 <script>
 (function() {
   const canvas = document.getElementById('canvas');
   const ctx = canvas.getContext('2d');
   const header = document.getElementById('header');
-  const levelLabel = document.getElementById('level-label');
-  const tanglesLabel = document.getElementById('tangles');
-  const tanglesIcon = document.getElementById('crossings-icon');
-  const movesLabel = document.getElementById('moves');
-  const winMovesLabel = document.getElementById('win-moves');
   const restartBtn = document.getElementById('restart');
-  const winOverlay = document.getElementById('win-overlay');
-  const nextLevelBtn = document.getElementById('next-level');
-  const instructionsEl = document.getElementById('instructions');
-  const bandBtns = document.querySelectorAll('.band-btn');
+  const dTwists = document.getElementById('d-twists');
+  const dZOrder = document.getElementById('d-zorder');
+  const dMoves = document.getElementById('d-moves');
+  const dLast = document.getElementById('d-last');
 
-  const BANDS = { easy: { startLevel: 1 }, medium: { startLevel: 5 }, hard: { startLevel: 10 }, expert: { startLevel: 18 } };
-  const ROPE_COLORS = [
-    '#ef4444','#3b82f6','#22c55e','#f97316',
-    '#a855f7','#ec4899','#14b8a6','#eab308',
-    '#f43f5e','#8b5cf6','#06b6d4','#84cc16'
-  ];
+  const ROPE_COLORS = ['#ef4444', '#3b82f6'];
 
   const state = {
-    level: 1,
     pegs: [],
     ropeAtPeg: [],
     ropes: [],
-    twists: [],
-    zOrder: [],
-    zCounter: 0,
+    twists: [[0,0],[0,0]],
+    zOrder: [0, 1],
+    zCounter: 1,
     drag: null,
     hoverPeg: -1,
-    solved: false,
     moves: 0,
-    instructionsDismissed: false,
-    woodGrain: []
+    woodGrain: [],
+    lastAction: '—'
   };
 
   // --- Geometry ---
@@ -172,7 +89,7 @@ canvas.dragging { cursor: grabbing; }
     if (Math.abs(denom) < 1e-10) return null;
     const t = ((cx-ax)*d2y-(cy-ay)*d2x)/denom;
     const u = ((cx-ax)*d1y-(cy-ay)*d1x)/denom;
-    if (t>0.001 && t<0.999 && u>-0.01 && u<1.01)
+    if (t>0.001 && t<0.999 && u>0.001 && u<0.999)
       return { x:ax+t*d1x, y:ay+t*d1y, t, u };
     return null;
   }
@@ -180,7 +97,6 @@ canvas.dragging { cursor: grabbing; }
     return (bx-ax)*(dy-cy)-(by-ay)*(dx-cx) > 0 ? 1 : -1;
   }
   function dist(x1,y1,x2,y2) { return Math.sqrt((x2-x1)**2+(y2-y1)**2); }
-  function lerp(a,b,t) { return a+(b-a)*t; }
 
   // --- Wood grain ---
   function generateWoodGrain() {
@@ -193,70 +109,57 @@ canvas.dragging { cursor: grabbing; }
     }
   }
 
-  // --- Level Generation ---
-  function ropesForLevel(lv) { return Math.min(2+lv,12); }
-  function emptyPegsForLevel(lv) { return Math.max(2, Math.min(4, Math.floor(ropesForLevel(lv)*0.4))); }
-  function shuffleMovesForLevel(lv) { return 3+lv*2; }
+  // --- Hardcoded braiding scenario ---
+  //
+  //  Rope A (red):  horizontal, peg 0 → peg 1
+  //  Rope B (blue): vertical,   peg 2 → peg 3
+  //  They cross in the center.
+  //
+  //  Layout (3x3 grid of pegs):
+  //
+  //    4       2       5
+  //
+  //    0      [X]      1      ← rope A horizontal
+  //
+  //    6       3       7
+  //
+  //  Pegs 4,5,6,7 are empty.
+  //  Peg 2 = top, peg 3 = bottom (rope B vertical)
 
-  function shuffle(arr) {
-    for (let i=arr.length-1;i>0;i--) { const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; }
-    return arr;
-  }
-
-  const PEG_LAYOUTS = [
-    function circle(n,cx,cy,R) { const p=[]; for(let i=0;i<n;i++){const a=2*Math.PI*i/n-Math.PI/2;p.push({x:cx+R*Math.cos(a),y:cy+R*Math.sin(a)});} return p; },
-    function square(n,cx,cy,R) { const p=[],ps=Math.ceil(n/4); let pl=0;
-      for(let s=0;s<4&&pl<n;s++){const c=Math.min(ps,n-pl);for(let i=0;i<c;i++){const t=c>1?i/c:0;let x,y;if(s===0){x=-R+t*2*R;y=-R;}else if(s===1){x=R;y=-R+t*2*R;}else if(s===2){x=R-t*2*R;y=R;}else{x=-R;y=R-t*2*R;}p.push({x:cx+x,y:cy+y});pl++;}}return p; },
-    function parallel(n,cx,cy,R) { const p=[],tc=Math.ceil(n/2),bc=n-tc,g=R*0.8;
-      for(let i=0;i<tc;i++){const t=tc>1?i/(tc-1):0.5;p.push({x:cx-R+t*2*R,y:cy-g});}
-      for(let i=0;i<bc;i++){const t=bc>1?i/(bc-1):0.5;p.push({x:cx-R+t*2*R,y:cy+g});}return p; },
-    function diamond(n,cx,cy,R) { const p=[],ps=Math.ceil(n/4);let pl=0;
-      const v=[{x:cx,y:cy-R},{x:cx+R,y:cy},{x:cx,y:cy+R},{x:cx-R,y:cy}];
-      for(let s=0;s<4&&pl<n;s++){const a=v[s],b=v[(s+1)%4],c=Math.min(ps,n-pl);for(let i=0;i<c;i++){const t=c>1?i/c:0;p.push({x:a.x+t*(b.x-a.x),y:a.y+t*(b.y-a.y)});pl++;}}return p; },
-    function triangle(n,cx,cy,R) { const p=[],ps=Math.ceil(n/3);let pl=0;
-      const v=[{x:cx,y:cy-R},{x:cx+R*0.87,y:cy+R*0.5},{x:cx-R*0.87,y:cy+R*0.5}];
-      for(let s=0;s<3&&pl<n;s++){const a=v[s],b=v[(s+1)%3],c=Math.min(ps,n-pl);for(let i=0;i<c;i++){const t=c>1?i/c:0;p.push({x:a.x+t*(b.x-a.x),y:a.y+t*(b.y-a.y)});pl++;}}return p; }
-  ];
-
-  function generateLevel(numRopes, numShuffles) {
+  function setupBraidingScenario() {
     const w=canvas.width/devicePixelRatio, h=canvas.height/devicePixelRatio;
-    const cx=w/2, cy=h/2, R=Math.min(cx,cy)*0.55;
-    const numEmpty = emptyPegsForLevel(state.level);
-    const numPegs = 2*numRopes + numEmpty;
+    const cx=w/2, cy=h/2, sp=150;
 
-    const layout = PEG_LAYOUTS[Math.floor(Math.random()*PEG_LAYOUTS.length)];
-    state.pegs = layout(numPegs, cx, cy, R);
+    state.pegs = [
+      {x: cx-sp, y: cy},     // 0: rope A left
+      {x: cx+sp, y: cy},     // 1: rope A right
+      {x: cx,    y: cy-sp},  // 2: rope B top
+      {x: cx,    y: cy+sp},  // 3: rope B bottom
+      {x: cx-sp, y: cy-sp},  // 4: empty top-left
+      {x: cx+sp, y: cy-sp},  // 5: empty top-right
+      {x: cx-sp, y: cy+sp},  // 6: empty bottom-left
+      {x: cx+sp, y: cy+sp},  // 7: empty bottom-right
+    ];
 
-    state.ropes = [];
-    state.ropeAtPeg = new Array(numPegs).fill(null);
-    for (let i=0; i<numRopes; i++) {
-      const pA=i*2, pB=i*2+1;
-      state.ropes.push({ color: ROPE_COLORS[i%ROPE_COLORS.length], pegs:[pA,pB] });
-      state.ropeAtPeg[pA] = {rope:i,end:0};
-      state.ropeAtPeg[pB] = {rope:i,end:1};
-    }
+    state.ropes = [
+      { color: ROPE_COLORS[0], pegs: [0, 1] },  // A: red, horizontal
+      { color: ROPE_COLORS[1], pegs: [2, 3] },  // B: blue, vertical
+    ];
 
-    state.twists = [];
-    state.zOrder = [];
-    state.zCounter = numRopes;
-    for (let i=0;i<numRopes;i++) { state.twists[i]=new Array(numRopes).fill(0); state.zOrder[i]=i; }
+    state.ropeAtPeg = new Array(8).fill(null);
+    state.ropeAtPeg[0] = {rope:0, end:0};
+    state.ropeAtPeg[1] = {rope:0, end:1};
+    state.ropeAtPeg[2] = {rope:1, end:0};
+    state.ropeAtPeg[3] = {rope:1, end:1};
 
-    // Shuffle
-    for (let attempt=0; attempt<5; attempt++) {
-      for (let i=0;i<numRopes;i++) state.twists[i].fill(0);
-      for (let m=0;m<numShuffles;m++) {
-        const occupied=[];
-        for (let p=0;p<numPegs;p++) if(state.ropeAtPeg[p]!==null) occupied.push(p);
-        const empties=[];
-        for (let p=0;p<numPegs;p++) if(state.ropeAtPeg[p]===null) empties.push(p);
-        if (empties.length===0) break;
-        const fromPeg = occupied[Math.floor(Math.random()*occupied.length)];
-        const toPeg = empties[Math.floor(Math.random()*empties.length)];
-        executeMove(fromPeg, toPeg);
-      }
-      if (totalTwists()>0) break;
-      numShuffles = Math.max(numShuffles*2, 20);
-    }
+    state.twists = [[0,0],[0,0]];
+    state.zOrder = [0, 1];
+    state.zCounter = 1;
+    state.drag = null;
+    state.hoverPeg = -1;
+    state.moves = 0;
+    state.lastAction = '—';
+
     generateWoodGrain();
   }
 
@@ -265,21 +168,31 @@ canvas.dragging { cursor: grabbing; }
     if (!re) return;
     const ropeIdx=re.rope, endIdx=re.end;
     const p1=state.pegs[fromPeg], p2=state.pegs[toPeg];
+    const ropeName = ropeIdx===0 ? 'A(red)' : 'B(blue)';
+    const endName = endIdx===0 ? 'end0' : 'end1';
 
     // Picking up puts this rope on top BEFORE crossing detection
     state.zCounter++;
     state.zOrder[ropeIdx] = state.zCounter;
 
+    let crossed = false;
     for (let j=0;j<state.ropes.length;j++) {
       if (j===ropeIdx) continue;
       const other=state.ropes[j];
       const c=state.pegs[other.pegs[0]], d=state.pegs[other.pegs[1]];
-      if (segmentsIntersect(p1.x,p1.y,p2.x,p2.y,c.x,c.y,d.x,d.y)) {
+      const hit = segmentsIntersect(p1.x,p1.y,p2.x,p2.y,c.x,c.y,d.x,d.y);
+      if (hit) {
         let sign = crossSign(p1.x,p1.y,p2.x,p2.y,c.x,c.y,d.x,d.y);
         if (ropeIdx > j) sign = -sign;
         state.twists[ropeIdx][j] += sign;
         state.twists[j][ropeIdx] += sign;
+        crossed = true;
+        const otherName = j===0 ? 'A(red)' : 'B(blue)';
+        state.lastAction = `${ropeName} ${endName}: peg${fromPeg}→peg${toPeg}, crossed ${otherName} (sign=${sign>0?'+':''}${sign}), twist=${state.twists[0][1]}`;
       }
+    }
+    if (!crossed) {
+      state.lastAction = `${ropeName} ${endName}: peg${fromPeg}→peg${toPeg}, no crossing`;
     }
 
     state.ropes[ropeIdx].pegs[endIdx] = toPeg;
@@ -288,15 +201,8 @@ canvas.dragging { cursor: grabbing; }
   }
 
   function totalTwists() {
-    let t=0;
-    for (let i=0;i<state.ropes.length;i++)
-      for (let j=i+1;j<state.ropes.length;j++) t+=Math.abs(state.twists[i][j]);
-    return t;
+    return Math.abs(state.twists[0][1]);
   }
-
-  // Twists are persistent physical state — they do NOT get cleared
-  // based on geometry. Two ropes can be twisted even if they don't
-  // currently cross geometrically (the twist is still there physically).
 
   // --- Rendering ---
   function drawBoard() {
@@ -325,74 +231,48 @@ canvas.dragging { cursor: grabbing; }
   }
 
   function computeCurveControl(ax,ay,bx,by, ropeIdx) {
-    // Compute a bezier control point — rope bends toward its twist partners
     let offX=0, offY=0;
     const mx=(ax+bx)/2, my=(ay+by)/2;
     const dx=bx-ax, dy=by-ay;
     const len=Math.sqrt(dx*dx+dy*dy)||1;
-    // Perpendicular
     const px=-dy/len, py=dx/len;
-
     for (let j=0;j<state.ropes.length;j++) {
       if (j===ropeIdx) continue;
       const tw = state.twists[ropeIdx][j];
       if (tw===0) continue;
       const [c,d] = getRopeEndpoints(j);
       const omx=(c.x+d.x)/2, omy=(c.y+d.y)/2;
-      // Pull toward the other rope's midpoint
-      const pull = Math.min(Math.abs(tw)*15, 60);
+      const pull = Math.min(Math.abs(tw)*20, 80);
       const toOther = {x:omx-mx, y:omy-my};
       const toLen = Math.sqrt(toOther.x**2+toOther.y**2)||1;
       offX += (toOther.x/toLen)*pull;
       offY += (toOther.y/toLen)*pull;
     }
-
-    // Add slight natural sag
-    offX += px*10;
-    offY += py*10;
-
+    offX += px*8; offY += py*8;
     return {x:mx+offX, y:my+offY};
   }
 
   function drawRopeCurve(ax,ay,bx,by,cpx,cpy,color,lineW,alpha) {
     ctx.globalAlpha = alpha;
-    // Shadow
-    ctx.beginPath();
-    ctx.moveTo(ax+2,ay+3);
-    ctx.quadraticCurveTo(cpx+2,cpy+3,bx+2,by+3);
-    ctx.strokeStyle='rgba(0,0,0,0.3)';
-    ctx.lineWidth=lineW+4;
-    ctx.lineCap='round'; ctx.stroke();
-    // Body
-    ctx.beginPath();
-    ctx.moveTo(ax,ay);
-    ctx.quadraticCurveTo(cpx,cpy,bx,by);
-    ctx.strokeStyle=color;
-    ctx.lineWidth=lineW;
-    ctx.lineCap='round'; ctx.stroke();
-    // Highlight
-    ctx.beginPath();
-    ctx.moveTo(ax,ay);
-    ctx.quadraticCurveTo(cpx,cpy,bx,by);
-    ctx.strokeStyle='rgba(255,255,255,0.2)';
-    ctx.lineWidth=Math.max(2,lineW*0.3);
-    ctx.lineCap='round'; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(ax+2,ay+3); ctx.quadraticCurveTo(cpx+2,cpy+3,bx+2,by+3);
+    ctx.strokeStyle='rgba(0,0,0,0.3)'; ctx.lineWidth=lineW+4; ctx.lineCap='round'; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(ax,ay); ctx.quadraticCurveTo(cpx,cpy,bx,by);
+    ctx.strokeStyle=color; ctx.lineWidth=lineW; ctx.lineCap='round'; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(ax,ay); ctx.quadraticCurveTo(cpx,cpy,bx,by);
+    ctx.strokeStyle='rgba(255,255,255,0.2)'; ctx.lineWidth=Math.max(2,lineW*0.3); ctx.lineCap='round'; ctx.stroke();
     ctx.globalAlpha=1;
   }
 
   function drawRopeEndpoint(x,y,color,isDragged) {
-    const r = 10;
-    // Shadow
+    const r=12;
     ctx.beginPath(); ctx.arc(x+1,y+2,r,0,2*Math.PI);
     ctx.fillStyle='rgba(0,0,0,0.3)'; ctx.fill();
-    // Bulb
     ctx.beginPath(); ctx.arc(x,y,r,0,2*Math.PI);
     const g=ctx.createRadialGradient(x-r*0.3,y-r*0.3,r*0.1,x,y,r);
     g.addColorStop(0, isDragged ? '#fff' : lightenColor(color,40));
     g.addColorStop(1, color);
     ctx.fillStyle=g; ctx.fill();
     ctx.strokeStyle='rgba(0,0,0,0.2)'; ctx.lineWidth=1.5; ctx.stroke();
-    // Specular
     ctx.beginPath(); ctx.arc(x-r*0.25,y-r*0.3,r*0.3,0,2*Math.PI);
     ctx.fillStyle='rgba(255,255,255,0.4)'; ctx.fill();
   }
@@ -404,11 +284,9 @@ canvas.dragging { cursor: grabbing; }
   }
 
   function drawRopes() {
-    const ropeOrder = state.ropes.map((_,i)=>i);
-    ropeOrder.sort((a,b)=>state.zOrder[a]-state.zOrder[b]);
-    const lineW = 10;
+    const ropeOrder = [0, 1].sort((a,b)=>state.zOrder[a]-state.zOrder[b]);
+    const lineW = 12;
 
-    // Compute all curve data
     const curves = ropeOrder.map(i => {
       const [a,b] = getRopeEndpoints(i);
       const cp = computeCurveControl(a.x,a.y,b.x,b.y,i);
@@ -416,45 +294,35 @@ canvas.dragging { cursor: grabbing; }
       return {i, a, b, cp, tangled, color: state.ropes[i].color};
     });
 
-    // Phase 1: Draw all ropes in z-order
+    // Draw ropes in z-order (bottom first)
     for (const c of curves) {
       drawRopeCurve(c.a.x,c.a.y,c.b.x,c.b.y,c.cp.x,c.cp.y,c.color,lineW,c.tangled?0.6:1);
     }
 
-    // Phase 2: Over/under at crossings — redraw the "over" rope segment on top
+    // Over/under at crossings
     for (let ci=0;ci<curves.length;ci++) {
       for (let cj=ci+1;cj<curves.length;cj++) {
         const ri=curves[ci].i, rj=curves[cj].i;
         const tw=state.twists[ri][rj];
         if (tw===0) continue;
-
-        // Find approximate crossing of the straight lines between endpoints
         const [a1,a2] = getRopeEndpoints(ri);
         const [b1,b2] = getRopeEndpoints(rj);
         const hit = segmentsIntersect(a1.x,a1.y,a2.x,a2.y,b1.x,b1.y,b2.x,b2.y);
         if (!hit) continue;
-
-        // Over rope has higher z-order
         const overIdx = state.zOrder[ri]>state.zOrder[rj] ? ri : rj;
         const underIdx = overIdx===ri ? rj : ri;
         const overC = curves.find(c=>c.i===overIdx);
         const underC = curves.find(c=>c.i===underIdx);
-        const patchR = 18;
-
         ctx.save();
-        ctx.beginPath();
-        ctx.arc(hit.x,hit.y,patchR,0,2*Math.PI);
-        ctx.clip();
+        ctx.beginPath(); ctx.arc(hit.x,hit.y,20,0,2*Math.PI); ctx.clip();
         drawBoard();
-        // Under rope (dimmed)
         drawRopeCurve(underC.a.x,underC.a.y,underC.b.x,underC.b.y,underC.cp.x,underC.cp.y,underC.color,lineW,0.35);
-        // Over rope (full)
         drawRopeCurve(overC.a.x,overC.a.y,overC.b.x,overC.b.y,overC.cp.x,overC.cp.y,overC.color,lineW,1);
         ctx.restore();
       }
     }
 
-    // Phase 3: Draw rope endpoints (bulbs) on top
+    // Endpoints
     for (const c of curves) {
       const isDragEnd = state.drag && state.drag.rope===c.i;
       drawRopeEndpoint(c.a.x,c.a.y,c.color, isDragEnd && state.drag.end===0);
@@ -463,23 +331,24 @@ canvas.dragging { cursor: grabbing; }
   }
 
   function drawPeg(index) {
-    if (state.ropeAtPeg[index] !== null) return; // Occupied pegs are covered by rope endpoints
-    if (state.drag && state.drag.fromPeg === index) {} // This peg was just freed — draw it
+    if (state.ropeAtPeg[index] !== null) return;
     const peg=state.pegs[index], x=peg.x, y=peg.y, r=12;
     const isHover = state.hoverPeg===index;
     const isValidDrop = state.drag !== null;
 
-    // Peg hole shadow
     ctx.beginPath(); ctx.arc(x,y+2,r,0,2*Math.PI);
     ctx.fillStyle='rgba(0,0,0,0.35)'; ctx.fill();
-    // Peg hole
     ctx.beginPath(); ctx.arc(x,y,r,0,2*Math.PI);
     const g=ctx.createRadialGradient(x,y,r*0.3,x,y,r);
     g.addColorStop(0,'#1a0e08'); g.addColorStop(1,'#2a1a10');
     ctx.fillStyle=g; ctx.fill();
     ctx.strokeStyle='rgba(80,50,30,0.6)'; ctx.lineWidth=2; ctx.stroke();
 
-    // Drop target highlight
+    // Peg label
+    ctx.fillStyle='rgba(200,160,120,0.5)'; ctx.font='11px monospace';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(index, x, y);
+
     if (isValidDrop && isHover) {
       ctx.beginPath(); ctx.arc(x,y,r+6,0,2*Math.PI);
       ctx.strokeStyle='rgba(245,197,99,0.7)'; ctx.lineWidth=3;
@@ -491,6 +360,16 @@ canvas.dragging { cursor: grabbing; }
     }
   }
 
+  function drawPegLabels() {
+    // Label occupied pegs too
+    ctx.fillStyle='rgba(200,160,120,0.4)'; ctx.font='10px monospace';
+    ctx.textAlign='center'; ctx.textBaseline='top';
+    for (let i=0;i<state.pegs.length;i++) {
+      const p=state.pegs[i];
+      ctx.fillText(`p${i}`, p.x, p.y+16);
+    }
+  }
+
   function draw() {
     const dpr=devicePixelRatio;
     ctx.setTransform(dpr,0,0,dpr,0,0);
@@ -498,14 +377,16 @@ canvas.dragging { cursor: grabbing; }
     ctx.clearRect(0,0,w,h);
     drawBoard();
     drawRopes();
-    // Draw empty pegs on top
     for (let i=0;i<state.pegs.length;i++) drawPeg(i);
-    // Update header
-    const tt=totalTwists();
-    tanglesLabel.textContent=tt;
-    tanglesLabel.className=tt===0?'solved':'';
-    tanglesIcon.className=tt===0?'solved':'';
-    movesLabel.textContent=state.moves;
+    drawPegLabels();
+    updateDebug();
+  }
+
+  function updateDebug() {
+    dTwists.textContent = state.twists[0][1];
+    dZOrder.textContent = `A:${state.zOrder[0]} B:${state.zOrder[1]}`;
+    dMoves.textContent = state.moves;
+    dLast.textContent = state.lastAction;
   }
 
   // --- Interaction ---
@@ -524,26 +405,20 @@ canvas.dragging { cursor: grabbing; }
   }
 
   function hitTestRopeEnd(mx,my) {
-    // Check if near a rope endpoint (the bulbs)
     for (let i=0;i<state.ropes.length;i++) {
       const r=state.ropes[i];
       for (let e=0;e<2;e++) {
         const p=state.pegs[r.pegs[e]];
-        if (dist(mx,my,p.x,p.y)<=20) return {rope:i,end:e,peg:r.pegs[e]};
+        if (dist(mx,my,p.x,p.y)<=22) return {rope:i,end:e,peg:r.pegs[e]};
       }
     }
     return null;
   }
 
-  function dismissInstructions() {
-    if (!state.instructionsDismissed) { state.instructionsDismissed=true; instructionsEl.classList.add('hidden'); }
-  }
   function deepCopyTwists() { return state.twists.map(r=>[...r]); }
 
   function onPointerDown(e) {
-    if (state.solved) return;
     e.preventDefault();
-    dismissInstructions();
     const pos=getCanvasPos(e);
     const hit = hitTestRopeEnd(pos.x,pos.y);
     if (!hit) return;
@@ -571,31 +446,26 @@ canvas.dragging { cursor: grabbing; }
       draw();
       return;
     }
-    // Hover
-    if (!state.solved) {
-      const hit=hitTestRopeEnd(pos.x,pos.y);
-      const pegIdx=hitTestPeg(pos.x,pos.y);
-      state.hoverPeg=pegIdx;
-      canvas.classList.toggle('can-grab',!!hit);
-      draw();
-    }
+    const hit=hitTestRopeEnd(pos.x,pos.y);
+    const pegIdx=hitTestPeg(pos.x,pos.y);
+    state.hoverPeg=pegIdx;
+    canvas.classList.toggle('can-grab',!!hit);
+    draw();
   }
 
   function onPointerUp(e) {
     if (!state.drag) return;
     const pos=getCanvasPos(e);
     const pegIdx=hitTestPeg(pos.x,pos.y);
-
     const isEmpty = pegIdx>=0 && state.ropeAtPeg[pegIdx]===null && pegIdx!==state.drag.fromPeg;
 
     if (isEmpty) {
-      // Restore state first (executeMove expects clean state)
+      // Restore then execute (executeMove expects pre-move state)
       state.twists=state.drag.savedTwists;
       for (let i=0;i<state.ropes.length;i++) state.ropes[i].pegs=state.drag.savedRopePegs[i];
       state.ropeAtPeg=state.drag.savedRopeAtPeg;
       state.zOrder=state.drag.savedZOrder;
       state.zCounter=state.drag.savedZCounter;
-      // Execute the move with twist tracking via straight-line path
       executeMove(state.drag.fromPeg, pegIdx);
       state.moves++;
     } else {
@@ -605,12 +475,12 @@ canvas.dragging { cursor: grabbing; }
       state.ropeAtPeg=state.drag.savedRopeAtPeg;
       state.zOrder=state.drag.savedZOrder;
       state.zCounter=state.drag.savedZCounter;
+      state.lastAction = 'cancelled';
     }
 
     state.drag=null;
     canvas.classList.remove('dragging','can-grab');
     draw();
-    checkWin();
   }
 
   canvas.addEventListener('mousedown',onPointerDown);
@@ -622,46 +492,19 @@ canvas.dragging { cursor: grabbing; }
   canvas.addEventListener('touchend',onPointerUp);
   canvas.addEventListener('touchcancel',(e)=>{if(state.drag)onPointerUp(e);});
 
-  // --- Win ---
-  function checkWin() {
-    if (totalTwists()===0 && !state.solved && state.moves>0) {
-      state.solved=true; winMovesLabel.textContent=state.moves;
-      setTimeout(()=>winOverlay.classList.add('visible'),400);
-    }
-  }
-
-  // --- Level Management ---
-  function updateBandButtons() {
-    const lv=state.level; let a='easy';
-    if(lv>=18)a='expert';else if(lv>=10)a='hard';else if(lv>=5)a='medium';
-    bandBtns.forEach(b=>b.classList.toggle('active',b.dataset.band===a));
-  }
-  function startLevel(level) {
-    state.level=level; state.solved=false; state.moves=0;
-    state.drag=null; state.hoverPeg=-1;
-    winOverlay.classList.remove('visible');
-    levelLabel.textContent=`Level ${level}`;
-    updateBandButtons();
-    generateLevel(ropesForLevel(level), shuffleMovesForLevel(level));
-    draw();
-  }
-  function restartLevel() { startLevel(state.level); }
-
-  bandBtns.forEach(b=>b.addEventListener('click',()=>{startLevel(BANDS[b.dataset.band].startLevel);dismissInstructions();}));
-  restartBtn.addEventListener('click',restartLevel);
-  nextLevelBtn.addEventListener('click',()=>startLevel(state.level+1));
+  restartBtn.addEventListener('click', () => { setupBraidingScenario(); draw(); });
 
   function resizeCanvas() {
     const dpr=devicePixelRatio||1, w=window.innerWidth, h=window.innerHeight-header.offsetHeight;
     canvas.style.width=w+'px'; canvas.style.height=h+'px';
     canvas.width=w*dpr; canvas.height=h*dpr;
   }
-  window.addEventListener('resize',()=>{resizeCanvas();startLevel(state.level);});
+  window.addEventListener('resize',()=>{resizeCanvas();setupBraidingScenario();draw();});
 
   resizeCanvas();
-  startLevel(1);
+  setupBraidingScenario();
+  draw();
   window.__gameState=state;
-  window.__startLevel=startLevel;
   window.__draw=draw;
 })();
 </script>
