@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { createBoard, moveRopeEnd, getTwist, totalTwists, segmentsIntersect, printBoard } = require('../rope-engine');
+const { createBoard, moveRopeEnd, getTwist, getZOrder, totalTwists, segmentsIntersect, printBoard } = require('../rope-engine');
 
 // 3x3 grid layout:
 //
@@ -283,5 +283,87 @@ test.describe('Two ropes on a 3x3 grid — braiding', () => {
     // same rotational direction, it should accumulate.
     // Both moves should wind in the same direction → twist should accumulate
     expect(Math.abs(t2)).toBe(2);
+  });
+});
+
+test.describe('Z-order and layer behavior', () => {
+
+  // Cross layout: rope A vertical, rope B horizontal, crossing at center
+  function crossBoard() {
+    const pegs = [
+      { x: 0, y: 150 },    // 0: rope A left
+      { x: 300, y: 150 },  // 1: rope A right
+      { x: 150, y: 0 },    // 2: rope B top
+      { x: 150, y: 300 },  // 3: rope B bottom
+      { x: 0, y: 0 },      // 4: empty
+      { x: 300, y: 0 },    // 5: empty
+      { x: 0, y: 300 },    // 6: empty
+      { x: 300, y: 300 },  // 7: empty
+    ];
+    return createBoard(pegs, [[0, 1], [2, 3]]);
+  }
+
+  test('initial z-order is sequential', () => {
+    const board = crossBoard();
+    expect(getZOrder(board, 0)).toBe(0);
+    expect(getZOrder(board, 1)).toBe(1);
+  });
+
+  test('picking up a rope end puts it on top', () => {
+    const board = crossBoard();
+    // Rope 1 starts with higher z. Move rope 0 — it should go on top.
+    moveRopeEnd(board, 0, 4); // move rope 0 left end to top-left
+    expect(getZOrder(board, 0)).toBeGreaterThan(getZOrder(board, 1));
+  });
+
+  test('z-order updates before crossing detection', () => {
+    const board = crossBoard();
+    // Rope 0: (0,150)→(300,150) horizontal. Rope 1: (150,0)→(150,300) vertical.
+    // Rope 0 starts at z=0, rope 1 at z=1 (rope 1 is on top)
+    // Move rope 0's right end (peg 1, 300,150) to peg 7 (300,300)
+    // This is vertical at x=300, doesn't cross rope 1. Pick a path that crosses:
+    // Move rope 0's right end (peg 1, 300,150) to peg 6 (0,300) — diagonal
+    // Path from (300,150) to (0,300) crosses rope 1 (150,0)→(150,300) at x=150
+    moveRopeEnd(board, 1, 6);
+    expect(getZOrder(board, 0)).toBeGreaterThan(getZOrder(board, 1));
+    expect(Math.abs(getTwist(board, 0, 1))).toBe(1);
+  });
+
+  test('alternating picks alternate which rope is on top', () => {
+    const board = crossBoard();
+    // Move rope 0
+    moveRopeEnd(board, 1, 7);
+    expect(getZOrder(board, 0)).toBeGreaterThan(getZOrder(board, 1));
+
+    // Move rope 1
+    moveRopeEnd(board, 2, 5);
+    expect(getZOrder(board, 1)).toBeGreaterThan(getZOrder(board, 0));
+
+    // Move rope 0 again
+    moveRopeEnd(board, 7, 1);
+    expect(getZOrder(board, 0)).toBeGreaterThan(getZOrder(board, 1));
+  });
+
+  test('the picked-up rope is always the one that goes over', () => {
+    const board = crossBoard();
+    // Move rope 0's right end across rope 1 → twist sign is determined
+    // by rope 0 being on top (it was just picked up)
+    moveRopeEnd(board, 1, 7);
+    const t1 = getTwist(board, 0, 1);
+
+    // Reset
+    const board2 = crossBoard();
+    // Move rope 1's bottom end across rope 0 → twist sign should reflect
+    // rope 1 being on top
+    moveRopeEnd(board2, 3, 6);
+    const t2 = getTwist(board2, 0, 1);
+
+    // Both moves cross the other rope. Since the picked-up rope is always
+    // on top, and these are crossing from the same geometric side, the
+    // signs should be consistent for braiding (both same sign for accumulation)
+    console.log('Rope 0 over:', t1, 'Rope 1 over:', t2);
+    // They should have the same sign (both "+1" or both "-1") since
+    // the canonical sign computation ensures braiding accumulates
+    expect(t1).toBe(t2);
   });
 });

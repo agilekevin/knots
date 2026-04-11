@@ -265,6 +265,10 @@ canvas.dragging { cursor: grabbing; }
     const ropeIdx=re.rope, endIdx=re.end;
     const p1=state.pegs[fromPeg], p2=state.pegs[toPeg];
 
+    // Picking up puts this rope on top BEFORE crossing detection
+    state.zCounter++;
+    state.zOrder[ropeIdx] = state.zCounter;
+
     for (let j=0;j<state.ropes.length;j++) {
       if (j===ropeIdx) continue;
       const other=state.ropes[j];
@@ -280,8 +284,6 @@ canvas.dragging { cursor: grabbing; }
     state.ropes[ropeIdx].pegs[endIdx] = toPeg;
     state.ropeAtPeg[toPeg] = re;
     state.ropeAtPeg[fromPeg] = null;
-    state.zCounter++;
-    state.zOrder[ropeIdx] = state.zCounter;
   }
 
   function totalTwists() {

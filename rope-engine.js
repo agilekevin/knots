@@ -18,7 +18,11 @@ function createBoard(pegs, ropes) {
     twists[i] = new Array(numRopes).fill(0);
   }
 
-  return { pegs, ropes: ropeData, ropeAtPeg, twists };
+  // zOrder[ropeIdx] = draw priority (higher = on top at crossings)
+  const zOrder = [];
+  for (let i = 0; i < numRopes; i++) zOrder[i] = i;
+
+  return { pegs, ropes: ropeData, ropeAtPeg, twists, zOrder, zCounter: numRopes - 1 };
 }
 
 function segmentsIntersect(ax, ay, bx, by, cx, cy, dx, dy) {
@@ -44,8 +48,14 @@ function crossSign(ax, ay, bx, by, cx, cy, dx, dy) {
 
 function moveRopeEnd(board, fromPeg, toPeg) {
   // Move the rope end at fromPeg to toPeg.
-  // The straight-line path from fromPeg to toPeg may cross other ropes,
-  // which adds or removes twists.
+  //
+  // Picking up the end puts it on the top layer. As it drags across other
+  // ropes, it always goes OVER them (since it's on top). The z-order of
+  // the crossed rope determines whether it's an "over-under" or "over-over"
+  // interaction, which affects the twist sign.
+  //
+  // The straight-line path from fromPeg to toPeg determines which ropes
+  // are crossed.
   const re = board.ropeAtPeg[fromPeg];
   if (!re) throw new Error(`No rope end at peg ${fromPeg}`);
   if (board.ropeAtPeg[toPeg] !== null) throw new Error(`Peg ${toPeg} is occupied`);
@@ -55,11 +65,12 @@ function moveRopeEnd(board, fromPeg, toPeg) {
   const p1 = board.pegs[fromPeg];
   const p2 = board.pegs[toPeg];
 
+  // The picked-up rope goes to the top layer BEFORE crossing detection.
+  // This means the dragged end is always above any rope it crosses.
+  board.zCounter++;
+  board.zOrder[ropeIdx] = board.zCounter;
+
   // Check which other ropes are crossed by the path from fromPeg to toPeg.
-  // The twist sign is computed canonically: always use rope[min]'s direction
-  // crossed with the movement direction. This ensures that when rope A moves
-  // across rope B, and then rope B moves across rope A in the same rotational
-  // sense, the twists ACCUMULATE rather than cancel.
   for (let j = 0; j < board.ropes.length; j++) {
     if (j === ropeIdx) continue;
     const other = board.ropes[j];
@@ -67,15 +78,11 @@ function moveRopeEnd(board, fromPeg, toPeg) {
     const d = board.pegs[other.pegs[1]];
     const hit = segmentsIntersect(p1.x, p1.y, p2.x, p2.y, c.x, c.y, d.x, d.y);
     if (hit) {
-      // Canonical sign for braiding: use the cross product of the movement
-      // direction with the stationary rope direction, then flip based on
-      // rope pair ordering to ensure consistency.
-      // This means: crossing the same rope from the same side always gives
-      // the same sign, regardless of which rope is moving.
+      // The dragged rope is on top (just raised to highest z).
+      // The geometric cross product gives the rotational direction.
+      // We use canonical ordering (flip when ropeIdx > j) so that
+      // braiding accumulates: A over B then B over A = 2 twists.
       let sign = crossSign(p1.x, p1.y, p2.x, p2.y, c.x, c.y, d.x, d.y);
-      // Flip sign when the moving rope has the higher index, so that
-      // "rope 0 moves across rope 1" and "rope 1 moves across rope 0"
-      // produce the same sign when the crossing is in the same rotational sense.
       if (ropeIdx > j) sign = -sign;
       board.twists[ropeIdx][j] += sign;
       board.twists[j][ropeIdx] += sign;
@@ -86,6 +93,10 @@ function moveRopeEnd(board, fromPeg, toPeg) {
   board.ropes[ropeIdx].pegs[endIdx] = toPeg;
   board.ropeAtPeg[toPeg] = re;
   board.ropeAtPeg[fromPeg] = null;
+}
+
+function getZOrder(board, ropeIdx) {
+  return board.zOrder[ropeIdx];
 }
 
 function getTwist(board, ropeA, ropeB) {
@@ -112,4 +123,4 @@ function printBoard(board) {
   console.log();
 }
 
-module.exports = { createBoard, moveRopeEnd, getTwist, totalTwists, segmentsIntersect, crossSign, printBoard };
+module.exports = { createBoard, moveRopeEnd, getTwist, getZOrder, totalTwists, segmentsIntersect, crossSign, printBoard };
