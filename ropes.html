@@ -270,7 +270,8 @@ canvas.dragging { cursor: grabbing; }
       const other=state.ropes[j];
       const c=state.pegs[other.pegs[0]], d=state.pegs[other.pegs[1]];
       if (segmentsIntersect(p1.x,p1.y,p2.x,p2.y,c.x,c.y,d.x,d.y)) {
-        const sign = crossSign(p1.x,p1.y,p2.x,p2.y,c.x,c.y,d.x,d.y);
+        let sign = crossSign(p1.x,p1.y,p2.x,p2.y,c.x,c.y,d.x,d.y);
+        if (ropeIdx > j) sign = -sign;
         state.twists[ropeIdx][j] += sign;
         state.twists[j][ropeIdx] += sign;
       }
