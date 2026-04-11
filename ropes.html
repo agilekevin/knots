@@ -171,7 +171,7 @@ canvas.dragging { cursor: grabbing; }
     if (Math.abs(denom) < 1e-10) return null;
     const t = ((cx-ax)*d2y-(cy-ay)*d2x)/denom;
     const u = ((cx-ax)*d1y-(cy-ay)*d1x)/denom;
-    if (t>0.001 && t<0.999 && u>0.001 && u<0.999)
+    if (t>0.001 && t<0.999 && u>-0.01 && u<1.01)
       return { x:ax+t*d1x, y:ay+t*d1y, t, u };
     return null;
   }
@@ -290,17 +290,9 @@ canvas.dragging { cursor: grabbing; }
     return t;
   }
 
-  function reconcileTwists() {
-    for (let i=0;i<state.ropes.length;i++)
-      for (let j=i+1;j<state.ropes.length;j++) {
-        if (state.twists[i][j]===0) continue;
-        const a=state.pegs[state.ropes[i].pegs[0]], b=state.pegs[state.ropes[i].pegs[1]];
-        const c=state.pegs[state.ropes[j].pegs[0]], d=state.pegs[state.ropes[j].pegs[1]];
-        if (!segmentsIntersect(a.x,a.y,b.x,b.y,c.x,c.y,d.x,d.y)) {
-          state.twists[i][j]=0; state.twists[j][i]=0;
-        }
-      }
-  }
+  // Twists are persistent physical state — they do NOT get cleared
+  // based on geometry. Two ropes can be twisted even if they don't
+  // currently cross geometrically (the twist is still there physically).
 
   // --- Rendering ---
   function drawBoard() {
@@ -555,7 +547,6 @@ canvas.dragging { cursor: grabbing; }
     state.drag = {
       rope: hit.rope, end: hit.end, fromPeg: hit.peg,
       mouse: {x:pos.x, y:pos.y},
-      prevMouse: {x:state.pegs[hit.peg].x, y:state.pegs[hit.peg].y},
       savedTwists: deepCopyTwists(),
       savedRopePegs: state.ropes.map(r=>[...r.pegs]),
       savedRopeAtPeg: [...state.ropeAtPeg],
@@ -572,21 +563,6 @@ canvas.dragging { cursor: grabbing; }
     if (state.drag) {
       e.preventDefault();
       state.drag.mouse = pos;
-
-      // Track twist changes from mouse path
-      const prev=state.drag.prevMouse;
-      for (let j=0;j<state.ropes.length;j++) {
-        if (j===state.drag.rope) continue;
-        const r=state.ropes[j];
-        const c=state.pegs[r.pegs[0]], d=state.pegs[r.pegs[1]];
-        if (segmentsIntersect(prev.x,prev.y,pos.x,pos.y,c.x,c.y,d.x,d.y)) {
-          const sign=crossSign(prev.x,prev.y,pos.x,pos.y,c.x,c.y,d.x,d.y);
-          state.twists[state.drag.rope][j]+=sign;
-          state.twists[j][state.drag.rope]+=sign;
-        }
-      }
-      state.drag.prevMouse={x:pos.x,y:pos.y};
-
       state.hoverPeg = hitTestPeg(pos.x,pos.y);
       draw();
       return;
@@ -609,12 +585,15 @@ canvas.dragging { cursor: grabbing; }
     const isEmpty = pegIdx>=0 && state.ropeAtPeg[pegIdx]===null && pegIdx!==state.drag.fromPeg;
 
     if (isEmpty) {
-      // Commit
-      state.ropes[state.drag.rope].pegs[state.drag.end]=pegIdx;
-      state.ropeAtPeg[pegIdx]={rope:state.drag.rope,end:state.drag.end};
-      state.zCounter++; state.zOrder[state.drag.rope]=state.zCounter;
+      // Restore state first (executeMove expects clean state)
+      state.twists=state.drag.savedTwists;
+      for (let i=0;i<state.ropes.length;i++) state.ropes[i].pegs=state.drag.savedRopePegs[i];
+      state.ropeAtPeg=state.drag.savedRopeAtPeg;
+      state.zOrder=state.drag.savedZOrder;
+      state.zCounter=state.drag.savedZCounter;
+      // Execute the move with twist tracking via straight-line path
+      executeMove(state.drag.fromPeg, pegIdx);
       state.moves++;
-      reconcileTwists();
     } else {
       // Cancel
       state.twists=state.drag.savedTwists;
@@ -679,6 +658,7 @@ canvas.dragging { cursor: grabbing; }
   startLevel(1);
   window.__gameState=state;
   window.__startLevel=startLevel;
+  window.__draw=draw;
 })();
 </script>
 </body>
