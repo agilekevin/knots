@@ -3,15 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Tangle Ropes — Braiding Test</title>
+<title>Tangle Ropes — 3D Braiding Test</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body {
-  overflow: hidden;
-  background: #2c1810;
-  color: #e0e0e0;
-  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
-}
+body { overflow: hidden; background: #2c1810; color: #e0e0e0;
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif; }
 #header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 20px; background: linear-gradient(180deg, #3d2415 0%, #2c1810 100%);
@@ -20,9 +16,7 @@ body {
 #header-left { display: flex; align-items: center; gap: 16px; }
 #game-title { font-size: 20px; font-weight: 700; letter-spacing: 1px; color: #f5c563; }
 #home-link { color: #8a7060; text-decoration: none; font-size: 13px; }
-#debug {
-  font-size: 13px; color: #8a7060; font-family: monospace;
-}
+#debug { font-size: 13px; color: #8a7060; font-family: monospace; }
 #debug .val { color: #f5c563; font-weight: 600; }
 #debug .label { color: #6a5a4a; }
 button.reset-btn {
@@ -31,551 +25,394 @@ button.reset-btn {
   border-radius: 6px; cursor: pointer; font-size: 13px;
 }
 button.reset-btn:hover { background: rgba(255,255,255,0.1); color: #c8a882; }
-canvas { display: block; cursor: default; touch-action: none; }
-canvas.can-grab { cursor: grab; }
-canvas.dragging { cursor: grabbing; }
+#container { width: 100%; cursor: default; touch-action: none; }
+#container.can-grab { cursor: grab; }
+#container.dragging { cursor: grabbing; }
 </style>
 </head>
 <body>
 <div id="header">
   <div id="header-left">
     <a id="home-link" href="index.html">&larr; Back</a>
-    <span id="game-title">BRAID TEST</span>
-    <span style="font-size:10px;color:#5a4a3a">v0.8</span>
+    <span id="game-title">BRAID TEST 3D</span>
+    <span style="font-size:10px;color:#5a4a3a">v2.0</span>
   </div>
   <div id="debug">
-    <span class="label">twists:</span> <span class="val" id="d-twists">0</span>
-    &nbsp;
-    <span class="label">z-order:</span> <span class="val" id="d-zorder">R0:0 R1:1</span>
-    &nbsp;
     <span class="label">moves:</span> <span class="val" id="d-moves">0</span>
     &nbsp;
-    <span class="label">last:</span> <span class="val" id="d-last">—</span>
+    <span class="label">drag:</span> <span class="val" id="d-drag">—</span>
   </div>
   <button class="reset-btn" id="restart">Reset</button>
 </div>
-<canvas id="canvas"></canvas>
-<script>
-(function() {
-  const canvas = document.getElementById('canvas');
-  const ctx = canvas.getContext('2d');
-  const header = document.getElementById('header');
-  const restartBtn = document.getElementById('restart');
-  const dTwists = document.getElementById('d-twists');
-  const dZOrder = document.getElementById('d-zorder');
-  const dMoves = document.getElementById('d-moves');
-  const dLast = document.getElementById('d-last');
+<div id="container"></div>
 
-  const ROPE_COLORS = ['#ef4444', '#3b82f6'];
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/",
+    "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import * as CANNON from 'cannon-es';
 
-  const state = {
-    pegs: [],
-    ropeAtPeg: [],
-    ropes: [],
-    twists: [[0,0],[0,0]],
-    zOrder: [0, 1],
-    zCounter: 1,
-    drag: null,
-    hoverPeg: -1,
-    moves: 0,
-    woodGrain: [],
-    lastAction: '—'
+const container = document.getElementById('container');
+const restartBtn = document.getElementById('restart');
+const dMoves = document.getElementById('d-moves');
+const dDrag = document.getElementById('d-drag');
+const headerH = document.getElementById('header').offsetHeight;
+
+// --- Config ---
+const ROPE_RADIUS = 0.12;
+const ROPE_SEGMENTS = 12;      // physics bodies per rope
+const ROPE_TUBE_SEGS = 64;     // rendering smoothness
+const PEG_RADIUS = 0.2;
+const SPACING = 3;             // distance between pegs
+const COLORS = [0xef4444, 0x3b82f6];
+const BG_COLOR = 0x3d2a1a;
+
+// --- Three.js setup ---
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(BG_COLOR);
+
+const aspect = window.innerWidth / (window.innerHeight - headerH);
+const d = 5;
+const camera = new THREE.OrthographicCamera(-d * aspect, d * aspect, d, -d, 0.1, 100);
+camera.position.set(0, 0, 20);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight - headerH);
+renderer.setPixelRatio(window.devicePixelRatio);
+container.appendChild(renderer.domElement);
+
+// Lighting
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+dirLight.position.set(2, 4, 10);
+scene.add(dirLight);
+
+// --- Cannon-es physics ---
+const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -0.5, 0) });
+world.solver.iterations = 50;
+
+// Board (ground plane at y = -d to keep ropes from falling forever)
+const groundBody = new CANNON.Body({
+  type: CANNON.Body.STATIC,
+  shape: new CANNON.Plane()
+});
+groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+groundBody.position.set(0, -4, 0);
+world.addBody(groundBody);
+
+// --- State ---
+const state = {
+  ropes: [],        // [{bodies:[], meshes:[], tubeMesh, color, endA_peg, endB_peg}]
+  pegs: [],         // [{position: Vec3, mesh, occupied: bool}]
+  drag: null,       // {ropeIdx, endIdx, bodyIdx}
+  moves: 0
+};
+
+// --- Peg creation ---
+function createPeg(x, y, occupied) {
+  const geo = new THREE.CylinderGeometry(PEG_RADIUS, PEG_RADIUS, 0.3, 16);
+  const mat = new THREE.MeshStandardMaterial({
+    color: occupied ? 0x888888 : 0x1a0e08,
+    roughness: 0.8
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(x, y, -0.5);
+  mesh.rotation.x = Math.PI / 2;
+  scene.add(mesh);
+  return { position: new THREE.Vector3(x, y, 0), mesh, occupied };
+}
+
+// --- Rope creation ---
+// Each rope is a chain of Cannon-es spheres connected by DistanceConstraints.
+// Collision groups: ropes collide with OTHER ropes but not themselves.
+const GROUP_ROPE_A = 1;
+const GROUP_ROPE_B = 2;
+const GROUP_GROUND = 4;
+
+function createRope(startX, startY, endX, endY, colorHex, collisionGroup, collisionMask, zLayer) {
+  const bodies = [];
+  const segLen = Math.sqrt((endX-startX)**2 + (endY-startY)**2) / (ROPE_SEGMENTS - 1);
+
+  for (let i = 0; i < ROPE_SEGMENTS; i++) {
+    const t = i / (ROPE_SEGMENTS - 1);
+    const x = startX + (endX - startX) * t;
+    const y = startY + (endY - startY) * t;
+    const z = zLayer || 0;
+
+    const body = new CANNON.Body({
+      mass: (i === 0 || i === ROPE_SEGMENTS - 1) ? 0 : 2,
+      shape: new CANNON.Sphere(ROPE_RADIUS * 3),
+      position: new CANNON.Vec3(x, y, z),
+      linearDamping: 0.95,
+      angularDamping: 0.99,
+      collisionFilterGroup: collisionGroup,
+      collisionFilterMask: collisionMask | GROUP_GROUND
+    });
+    world.addBody(body);
+    bodies.push(body);
+
+    if (i > 0) {
+      const constraint = new CANNON.DistanceConstraint(bodies[i-1], body, segLen);
+      constraint.collideConnected = false;
+      world.addConstraint(constraint);
+    }
+  }
+
+  // Create tube mesh
+  const mat = new THREE.MeshStandardMaterial({
+    color: colorHex,
+    roughness: 0.6,
+    metalness: 0.1
+  });
+  const tubeMesh = new THREE.Mesh(new THREE.BufferGeometry(), mat);
+  scene.add(tubeMesh);
+
+  // Endpoint spheres (visual handles)
+  const endGeo = new THREE.SphereGeometry(ROPE_RADIUS * 2.5, 16, 16);
+  const endMatA = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.4 });
+  const endMatB = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.4 });
+  const endMeshA = new THREE.Mesh(endGeo, endMatA);
+  const endMeshB = new THREE.Mesh(endGeo, endMatB);
+  scene.add(endMeshA);
+  scene.add(endMeshB);
+
+  return {
+    bodies, tubeMesh, color: colorHex,
+    endMeshA, endMeshB,
+    mat
   };
+}
 
-  // --- Geometry ---
-  function segmentsIntersect(ax,ay,bx,by,cx,cy,dx,dy) {
-    const d1x=bx-ax, d1y=by-ay, d2x=dx-cx, d2y=dy-cy;
-    const denom = d1x*d2y - d1y*d2x;
-    if (Math.abs(denom) < 1e-10) return null;
-    const t = ((cx-ax)*d2y-(cy-ay)*d2x)/denom;
-    const u = ((cx-ax)*d1y-(cy-ay)*d1x)/denom;
-    if (t>0.001 && t<0.999 && u>0.001 && u<0.999)
-      return { x:ax+t*d1x, y:ay+t*d1y, t, u };
-    return null;
-  }
-  function crossSign(ax,ay,bx,by,cx,cy,dx,dy) {
-    return (bx-ax)*(dy-cy)-(by-ay)*(dx-cx) > 0 ? 1 : -1;
-  }
-  function dist(x1,y1,x2,y2) { return Math.sqrt((x2-x1)**2+(y2-y1)**2); }
+function updateRopeMesh(rope) {
+  const pts = rope.bodies.map(b =>
+    new THREE.Vector3(b.position.x, b.position.y, b.position.z)
+  );
+  const curve = new THREE.CatmullRomCurve3(pts);
+  rope.tubeMesh.geometry.dispose();
+  rope.tubeMesh.geometry = new THREE.TubeGeometry(curve, ROPE_TUBE_SEGS, ROPE_RADIUS, 8, false);
 
-  // --- Wood grain ---
-  function generateWoodGrain() {
-    const w=canvas.width/devicePixelRatio, h=canvas.height/devicePixelRatio;
-    state.woodGrain = [];
-    let y=0;
-    while (y<h) { const pts=[];
-      for (let x=0;x<=w;x+=40) pts.push({x,dy:(Math.random()-0.5)*3});
-      state.woodGrain.push({y,pts}); y+=10+Math.random()*10;
+  // Update endpoint visuals
+  const first = rope.bodies[0].position;
+  const last = rope.bodies[rope.bodies.length - 1].position;
+  rope.endMeshA.position.set(first.x, first.y, first.z);
+  rope.endMeshB.position.set(last.x, last.y, last.z);
+}
+
+// --- Setup scenario ---
+function setup() {
+  // Clear old state
+  while (scene.children.length > 0) scene.remove(scene.children[0]);
+  // Re-add lights
+  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+  const dl = new THREE.DirectionalLight(0xffffff, 0.8);
+  dl.position.set(2, 4, 10);
+  scene.add(dl);
+
+  // Remove old physics bodies
+  while (world.bodies.length > 0) world.removeBody(world.bodies[0]);
+  while (world.constraints.length > 0) world.removeConstraint(world.constraints[0]);
+
+  // Re-add ground
+  world.addBody(groundBody);
+
+  // Pegs: 3x3 grid centered at origin
+  //  4  2  5
+  //  0  .  1
+  //  6  3  7
+  state.pegs = [];
+  const pegPositions = [
+    [-SPACING, 0],          // 0: rope A left
+    [SPACING, 0],           // 1: rope A right
+    [0, SPACING],           // 2: rope B top
+    [0, -SPACING],          // 3: rope B bottom
+    [-SPACING, SPACING],    // 4: empty TL
+    [SPACING, SPACING],     // 5: empty TR
+    [-SPACING, -SPACING],   // 6: empty BL
+    [SPACING, -SPACING],    // 7: empty BR
+  ];
+  const occupied = [true, true, true, true, false, false, false, false];
+  for (let i = 0; i < pegPositions.length; i++) {
+    state.pegs.push(createPeg(pegPositions[i][0], pegPositions[i][1], occupied[i]));
+  }
+
+  // Rope A (red): horizontal, peg 0 → peg 1
+  // Rope B (blue): vertical, peg 2 → peg 3
+  // Collision: A collides with B but not itself, and vice versa
+  state.ropes = [];
+  state.ropes.push(createRope(
+    -SPACING, 0, SPACING, 0,
+    COLORS[0], GROUP_ROPE_A, GROUP_ROPE_B, -0.08
+  ));
+  state.ropes.push(createRope(
+    0, SPACING, 0, -SPACING,
+    COLORS[1], GROUP_ROPE_B, GROUP_ROPE_A, 0.08
+  ));
+
+  state.drag = null;
+  state.moves = 0;
+}
+
+// --- Interaction ---
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+function getWorldPos(e) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  const cx = e.touches ? e.touches[0].clientX : e.clientX;
+  const cy = e.touches ? e.touches[0].clientY : e.clientY;
+  mouse.x = ((cx - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((cy - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  // Intersect with z=0 plane
+  const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+  const target = new THREE.Vector3();
+  raycaster.ray.intersectPlane(plane, target);
+  return target;
+}
+
+function hitTestEndpoint(worldPos) {
+  const threshold = 0.6;
+  for (let ri = 0; ri < state.ropes.length; ri++) {
+    const rope = state.ropes[ri];
+    const first = rope.bodies[0].position;
+    const last = rope.bodies[rope.bodies.length-1].position;
+    if (worldPos.distanceTo(new THREE.Vector3(first.x, first.y, first.z)) < threshold) {
+      return { ropeIdx: ri, endIdx: 0, bodyIdx: 0 };
+    }
+    if (worldPos.distanceTo(new THREE.Vector3(last.x, last.y, last.z)) < threshold) {
+      return { ropeIdx: ri, endIdx: 1, bodyIdx: rope.bodies.length - 1 };
     }
   }
+  return null;
+}
 
-  // --- Hardcoded braiding scenario ---
-  //
-  //  Rope A (red):  horizontal, peg 0 → peg 1
-  //  Rope B (blue): vertical,   peg 2 → peg 3
-  //  They cross in the center.
-  //
-  //  Layout (3x3 grid of pegs):
-  //
-  //    4       2       5
-  //
-  //    0      [X]      1      ← rope A horizontal
-  //
-  //    6       3       7
-  //
-  //  Pegs 4,5,6,7 are empty.
-  //  Peg 2 = top, peg 3 = bottom (rope B vertical)
-
-  function setupBraidingScenario() {
-    const w=canvas.width/devicePixelRatio, h=canvas.height/devicePixelRatio;
-    const cx=w/2, cy=h/2, sp=150;
-
-    state.pegs = [
-      {x: cx-sp, y: cy},     // 0: rope A left
-      {x: cx+sp, y: cy},     // 1: rope A right
-      {x: cx,    y: cy-sp},  // 2: rope B top
-      {x: cx,    y: cy+sp},  // 3: rope B bottom
-      {x: cx-sp, y: cy-sp},  // 4: empty top-left
-      {x: cx+sp, y: cy-sp},  // 5: empty top-right
-      {x: cx-sp, y: cy+sp},  // 6: empty bottom-left
-      {x: cx+sp, y: cy+sp},  // 7: empty bottom-right
-    ];
-
-    state.ropes = [
-      { color: ROPE_COLORS[0], pegs: [0, 1] },  // A: red, horizontal
-      { color: ROPE_COLORS[1], pegs: [2, 3] },  // B: blue, vertical
-    ];
-
-    state.ropeAtPeg = new Array(8).fill(null);
-    state.ropeAtPeg[0] = {rope:0, end:0};
-    state.ropeAtPeg[1] = {rope:0, end:1};
-    state.ropeAtPeg[2] = {rope:1, end:0};
-    state.ropeAtPeg[3] = {rope:1, end:1};
-
-    state.twists = [[0,0],[0,0]];
-    state.zOrder = [0, 1];
-    state.zCounter = 1;
-    state.drag = null;
-    state.hoverPeg = -1;
-    state.moves = 0;
-    state.lastAction = '—';
-
-    generateWoodGrain();
+function hitTestPeg(worldPos) {
+  const threshold = 0.5;
+  for (let i = 0; i < state.pegs.length; i++) {
+    if (state.pegs[i].position.distanceTo(worldPos) < threshold) return i;
   }
+  return -1;
+}
 
-  function executeMove(fromPeg, toPeg) {
-    const re = state.ropeAtPeg[fromPeg];
-    if (!re) return;
-    const ropeIdx=re.rope, endIdx=re.end;
-    const p1=state.pegs[fromPeg], p2=state.pegs[toPeg];
-    const ropeName = ropeIdx===0 ? 'A(red)' : 'B(blue)';
-    const endName = endIdx===0 ? 'end0' : 'end1';
+function onPointerDown(e) {
+  e.preventDefault();
+  const wp = getWorldPos(e);
+  if (!wp) return;
+  const hit = hitTestEndpoint(wp);
+  if (!hit) return;
 
-    // Picking up puts this rope on top BEFORE crossing detection
-    state.zCounter++;
-    state.zOrder[ropeIdx] = state.zCounter;
+  const body = state.ropes[hit.ropeIdx].bodies[hit.bodyIdx];
+  body.mass = 0; // make it kinematic so we can move it
+  body.updateMassProperties();
 
-    let crossed = false;
-    for (let j=0;j<state.ropes.length;j++) {
-      if (j===ropeIdx) continue;
-      const other=state.ropes[j];
-      const c=state.pegs[other.pegs[0]], d=state.pegs[other.pegs[1]];
-      const hit = segmentsIntersect(p1.x,p1.y,p2.x,p2.y,c.x,c.y,d.x,d.y);
-      if (hit) {
-        let sign = crossSign(p1.x,p1.y,p2.x,p2.y,c.x,c.y,d.x,d.y);
-        if (ropeIdx > j) sign = -sign;
-        state.twists[ropeIdx][j] += sign;
-        state.twists[j][ropeIdx] += sign;
-        crossed = true;
-        const otherName = j===0 ? 'A(red)' : 'B(blue)';
-        state.lastAction = `${ropeName} ${endName}: peg${fromPeg}→peg${toPeg}, crossed ${otherName} (sign=${sign>0?'+':''}${sign}), twist=${state.twists[0][1]}`;
-      }
-    }
-    if (!crossed) {
-      state.lastAction = `${ropeName} ${endName}: peg${fromPeg}→peg${toPeg}, no crossing`;
-    }
+  state.drag = { ...hit, origPos: body.position.clone() };
+  container.classList.add('dragging');
+  dDrag.textContent = `R${hit.ropeIdx} end${hit.endIdx}`;
+}
 
-    state.ropes[ropeIdx].pegs[endIdx] = toPeg;
-    state.ropeAtPeg[toPeg] = re;
-    state.ropeAtPeg[fromPeg] = null;
-  }
+function onPointerMove(e) {
+  const wp = getWorldPos(e);
+  if (!wp) return;
 
-  function totalTwists() {
-    return Math.abs(state.twists[0][1]);
-  }
-
-  // --- Rendering ---
-  function drawBoard() {
-    const w=canvas.width/devicePixelRatio, h=canvas.height/devicePixelRatio;
-    const grad=ctx.createLinearGradient(0,0,w,h);
-    grad.addColorStop(0,'#3d2a1a'); grad.addColorStop(0.3,'#4a3222');
-    grad.addColorStop(0.5,'#3d2a1a'); grad.addColorStop(0.7,'#4a3222'); grad.addColorStop(1,'#3d2a1a');
-    ctx.fillStyle=grad; ctx.fillRect(0,0,w,h);
-    ctx.strokeStyle='rgba(0,0,0,0.06)'; ctx.lineWidth=1;
-    for (const line of state.woodGrain) {
-      ctx.beginPath(); ctx.moveTo(0,line.y);
-      for (const pt of line.pts) ctx.lineTo(pt.x,line.y+pt.dy);
-      ctx.stroke();
-    }
-  }
-
-  function getRopeEndpoints(ri) {
-    const r=state.ropes[ri];
-    if (state.drag && state.drag.rope===ri) {
-      const otherEnd = state.drag.end===0?1:0;
-      const a = state.pegs[r.pegs[otherEnd]];
-      const b = state.drag.mouse;
-      return state.drag.end===0 ? [b,a] : [a,b];
-    }
-    return [state.pegs[r.pegs[0]], state.pegs[r.pegs[1]]];
-  }
-
-  // --- Rope path computation ---
-  // When twisted, ropes route through a shared "twist point" so they
-  // visually cross each other, even when their endpoints are far apart.
-
-  function computeTwistPoint() {
-    // The twist point is where the two ropes physically intertwine.
-    // It's the midpoint between both ropes' midpoints.
-    const [a0, a1] = getRopeEndpoints(0);
-    const [b0, b1] = getRopeEndpoints(1);
-    return {
-      x: (a0.x + a1.x + b0.x + b1.x) / 4,
-      y: (a0.y + a1.y + b0.y + b1.y) / 4
-    };
-  }
-
-  function computeRopePath(ropeIdx) {
-    // Returns an array of points the rope passes through.
-    // Untwisted: straight from end to end (with slight sag).
-    // Twisted: routes through the twist point.
-    const [endA, endB] = getRopeEndpoints(ropeIdx);
-    const otherIdx = 1 - ropeIdx;
-    const tw = Math.abs(state.twists[ropeIdx][otherIdx]);
-
-    if (tw === 0) {
-      // Simple curve — slight perpendicular sag
-      const mx = (endA.x + endB.x) / 2;
-      const my = (endA.y + endB.y) / 2;
-      const dx = endB.x - endA.x, dy = endB.y - endA.y;
-      const len = Math.sqrt(dx*dx + dy*dy) || 1;
-      return { points: [endA, endB], control: { x: mx - dy/len*8, y: my + dx/len*8 }, twisted: false };
-    }
-
-    // Twisted: route through the twist point
-    const tp = computeTwistPoint();
-    return { points: [endA, tp, endB], twisted: true, twistPoint: tp };
-  }
-
-  function drawRopeStroke(points, color, lineW, alpha, offsetX, offsetY) {
-    ctx.globalAlpha = alpha;
-    ctx.beginPath();
-    if (points.length === 2) {
-      // Simple line
-      const mx = (points[0].x + points[1].x) / 2 + offsetX;
-      const my = (points[0].y + points[1].y) / 2 + offsetY;
-      const dx = points[1].x - points[0].x, dy = points[1].y - points[0].y;
-      const len = Math.sqrt(dx*dx+dy*dy) || 1;
-      const cx = mx - dy/len*8, cy = my + dx/len*8;
-      ctx.moveTo(points[0].x + offsetX, points[0].y + offsetY);
-      ctx.quadraticCurveTo(cx, cy, points[1].x + offsetX, points[1].y + offsetY);
-    } else {
-      // Multi-point: use quadratic through the middle point
-      ctx.moveTo(points[0].x + offsetX, points[0].y + offsetY);
-      for (let i = 1; i < points.length - 1; i++) {
-        const mid = points[i];
-        // Use the midpoint as the actual curve point, with control points
-        // that make a smooth path
-        const prev = points[i-1];
-        const next = points[i+1];
-        const cp1x = (prev.x + mid.x*2) / 3 + offsetX;
-        const cp1y = (prev.y + mid.y*2) / 3 + offsetY;
-        ctx.quadraticCurveTo(mid.x + offsetX, mid.y + offsetY,
-          (mid.x + next.x) / 2 + offsetX, (mid.y + next.y) / 2 + offsetY);
-      }
-      const last = points[points.length - 1];
-      const prev = points[points.length - 2];
-      ctx.quadraticCurveTo(prev.x + offsetX, prev.y + offsetY,
-        last.x + offsetX, last.y + offsetY);
-    }
-    ctx.strokeStyle = color;
-    ctx.lineWidth = lineW;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-  }
-
-  function drawRopeFull(points, color, lineW, alpha) {
-    // Shadow
-    drawRopeStroke(points, 'rgba(0,0,0,0.3)', lineW + 4, alpha, 2, 3);
-    // Body
-    drawRopeStroke(points, color, lineW, alpha, 0, 0);
-    // Highlight
-    drawRopeStroke(points, 'rgba(255,255,255,0.2)', Math.max(2, lineW*0.3), alpha, 0, 0);
-  }
-
-  function drawRopeEndpoint(x, y, color, isDragged) {
-    const r = 12;
-    ctx.beginPath(); ctx.arc(x+1, y+2, r, 0, 2*Math.PI);
-    ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fill();
-    ctx.beginPath(); ctx.arc(x, y, r, 0, 2*Math.PI);
-    const g = ctx.createRadialGradient(x-r*0.3, y-r*0.3, r*0.1, x, y, r);
-    g.addColorStop(0, isDragged ? '#fff' : lightenColor(color, 40));
-    g.addColorStop(1, color);
-    ctx.fillStyle = g; ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.2)'; ctx.lineWidth = 1.5; ctx.stroke();
-    ctx.beginPath(); ctx.arc(x-r*0.25, y-r*0.3, r*0.3, 0, 2*Math.PI);
-    ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.fill();
-  }
-
-  function lightenColor(hex, amt) {
-    let r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
-    r = Math.min(255, r+amt); g = Math.min(255, g+amt); b = Math.min(255, b+amt);
-    return `rgb(${r},${g},${b})`;
-  }
-
-  function drawRopes() {
-    const tw = state.twists[0][1];
-    const absTw = Math.abs(tw);
-    const lineW = 12;
-    const overIdx = state.zOrder[0] > state.zOrder[1] ? 0 : 1;
-    const underIdx = 1 - overIdx;
-
-    const path0 = computeRopePath(0);
-    const path1 = computeRopePath(1);
-
-    if (absTw === 0) {
-      // No twist — just draw both ropes normally
-      drawRopeFull(path0.points, state.ropes[0].color, lineW, 1);
-      drawRopeFull(path1.points, state.ropes[1].color, lineW, 1);
-    } else {
-      // Twisted — both ropes route through the twist point.
-      // Draw under rope first, then over rope.
-      // At the twist point, the over rope visually crosses on top.
-      const underPath = underIdx === 0 ? path0 : path1;
-      const overPath = overIdx === 0 ? path0 : path1;
-      const tp = computeTwistPoint();
-
-      // Draw under rope fully
-      drawRopeFull(underPath.points, state.ropes[underIdx].color, lineW, 0.85);
-
-      // Clear a gap at the twist point for the under rope
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(tp.x, tp.y, lineW + 4, 0, 2*Math.PI);
-      ctx.clip();
-      drawBoard(); // erase the under rope at the crossing
-      ctx.restore();
-
-      // Redraw under rope dimmed at the crossing (shows it going "behind")
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(tp.x, tp.y, lineW + 4, 0, 2*Math.PI);
-      ctx.clip();
-      drawRopeFull(underPath.points, state.ropes[underIdx].color, lineW, 0.3);
-      ctx.restore();
-
-      // Draw over rope fully on top
-      drawRopeFull(overPath.points, state.ropes[overIdx].color, lineW, 1);
-    }
-
-    // Draw endpoints on top of everything
-    for (let i = 0; i < 2; i++) {
-      const [a, b] = getRopeEndpoints(i);
-      const isDragEnd = state.drag && state.drag.rope === i;
-      drawRopeEndpoint(a.x, a.y, state.ropes[i].color, isDragEnd && state.drag.end === 0);
-      drawRopeEndpoint(b.x, b.y, state.ropes[i].color, isDragEnd && state.drag.end === 1);
-    }
-
-    // Draw twist count at the twist point
-    if (absTw > 0) {
-      const tp = computeTwistPoint();
-      ctx.fillStyle = 'rgba(255,255,255,0.7)';
-      ctx.font = 'bold 14px monospace';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(`×${absTw}`, tp.x, tp.y - lineW - 8);
-    }
-  }
-
-  function drawPeg(index) {
-    if (state.ropeAtPeg[index] !== null) return;
-    const peg=state.pegs[index], x=peg.x, y=peg.y, r=12;
-    const isHover = state.hoverPeg===index;
-    const isValidDrop = state.drag !== null;
-
-    ctx.beginPath(); ctx.arc(x,y+2,r,0,2*Math.PI);
-    ctx.fillStyle='rgba(0,0,0,0.35)'; ctx.fill();
-    ctx.beginPath(); ctx.arc(x,y,r,0,2*Math.PI);
-    const g=ctx.createRadialGradient(x,y,r*0.3,x,y,r);
-    g.addColorStop(0,'#1a0e08'); g.addColorStop(1,'#2a1a10');
-    ctx.fillStyle=g; ctx.fill();
-    ctx.strokeStyle='rgba(80,50,30,0.6)'; ctx.lineWidth=2; ctx.stroke();
-
-    // Peg label
-    ctx.fillStyle='rgba(200,160,120,0.5)'; ctx.font='11px monospace';
-    ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText(index, x, y);
-
-    if (isValidDrop && isHover) {
-      ctx.beginPath(); ctx.arc(x,y,r+6,0,2*Math.PI);
-      ctx.strokeStyle='rgba(245,197,99,0.7)'; ctx.lineWidth=3;
-      ctx.setLineDash([4,4]); ctx.stroke(); ctx.setLineDash([]);
-    } else if (isValidDrop) {
-      ctx.beginPath(); ctx.arc(x,y,r+4,0,2*Math.PI);
-      ctx.strokeStyle='rgba(245,197,99,0.2)'; ctx.lineWidth=1.5;
-      ctx.setLineDash([3,3]); ctx.stroke(); ctx.setLineDash([]);
-    }
-  }
-
-  function drawPegLabels() {
-    // Label occupied pegs too
-    ctx.fillStyle='rgba(200,160,120,0.4)'; ctx.font='10px monospace';
-    ctx.textAlign='center'; ctx.textBaseline='top';
-    for (let i=0;i<state.pegs.length;i++) {
-      const p=state.pegs[i];
-      ctx.fillText(`p${i}`, p.x, p.y+16);
-    }
-  }
-
-  function draw() {
-    const dpr=devicePixelRatio;
-    ctx.setTransform(dpr,0,0,dpr,0,0);
-    const w=canvas.width/dpr, h=canvas.height/dpr;
-    ctx.clearRect(0,0,w,h);
-    drawBoard();
-    drawRopes();
-    for (let i=0;i<state.pegs.length;i++) drawPeg(i);
-    drawPegLabels();
-    updateDebug();
-  }
-
-  function updateDebug() {
-    dTwists.textContent = state.twists[0][1];
-    dZOrder.textContent = `A:${state.zOrder[0]} B:${state.zOrder[1]}`;
-    dMoves.textContent = state.moves;
-    dLast.textContent = state.lastAction;
-  }
-
-  // --- Interaction ---
-  function getCanvasPos(e) {
-    const rect=canvas.getBoundingClientRect();
-    const cx=e.touches?e.touches[0].clientX:e.clientX;
-    const cy=e.touches?e.touches[0].clientY:e.clientY;
-    return {x:cx-rect.left, y:cy-rect.top};
-  }
-
-  function hitTestPeg(mx,my) {
-    for (let i=0;i<state.pegs.length;i++) {
-      if (dist(mx,my,state.pegs[i].x,state.pegs[i].y)<=28) return i;
-    }
-    return -1;
-  }
-
-  function hitTestRopeEnd(mx,my) {
-    for (let i=0;i<state.ropes.length;i++) {
-      const r=state.ropes[i];
-      for (let e=0;e<2;e++) {
-        const p=state.pegs[r.pegs[e]];
-        if (dist(mx,my,p.x,p.y)<=22) return {rope:i,end:e,peg:r.pegs[e]};
-      }
-    }
-    return null;
-  }
-
-  function deepCopyTwists() { return state.twists.map(r=>[...r]); }
-
-  function onPointerDown(e) {
+  if (state.drag) {
     e.preventDefault();
-    const pos=getCanvasPos(e);
-    const hit = hitTestRopeEnd(pos.x,pos.y);
-    if (!hit) return;
-
-    state.drag = {
-      rope: hit.rope, end: hit.end, fromPeg: hit.peg,
-      mouse: {x:pos.x, y:pos.y},
-      savedTwists: deepCopyTwists(),
-      savedRopePegs: state.ropes.map(r=>[...r.pegs]),
-      savedRopeAtPeg: [...state.ropeAtPeg],
-      savedZOrder: [...state.zOrder],
-      savedZCounter: state.zCounter
-    };
-    state.ropeAtPeg[hit.peg] = null;
-    canvas.classList.add('dragging');
-    draw();
+    const body = state.ropes[state.drag.ropeIdx].bodies[state.drag.bodyIdx];
+    body.position.set(wp.x, wp.y, body.position.z);
+    body.velocity.set(0, 0, 0);
+    return;
   }
 
-  function onPointerMove(e) {
-    const pos=getCanvasPos(e);
-    if (state.drag) {
-      e.preventDefault();
-      state.drag.mouse = pos;
-      state.hoverPeg = hitTestPeg(pos.x,pos.y);
-      draw();
-      return;
+  // Hover
+  const hit = hitTestEndpoint(wp);
+  container.classList.toggle('can-grab', !!hit);
+}
+
+function onPointerUp(e) {
+  if (!state.drag) return;
+
+  const wp = getWorldPos(e);
+  const pegIdx = wp ? hitTestPeg(wp) : -1;
+  const body = state.ropes[state.drag.ropeIdx].bodies[state.drag.bodyIdx];
+
+  if (pegIdx >= 0 && !state.pegs[pegIdx].occupied) {
+    // Snap to peg
+    const peg = state.pegs[pegIdx];
+    body.position.set(peg.position.x, peg.position.y, 0);
+    body.velocity.set(0, 0, 0);
+    peg.occupied = true;
+    // Free old peg (find which one this endpoint was on)
+    // For simplicity, mark the nearest peg to origPos as free
+    let minDist = Infinity, oldPeg = -1;
+    for (let i = 0; i < state.pegs.length; i++) {
+      const d = state.pegs[i].position.distanceTo(
+        new THREE.Vector3(state.drag.origPos.x, state.drag.origPos.y, 0));
+      if (d < minDist) { minDist = d; oldPeg = i; }
     }
-    const hit=hitTestRopeEnd(pos.x,pos.y);
-    const pegIdx=hitTestPeg(pos.x,pos.y);
-    state.hoverPeg=pegIdx;
-    canvas.classList.toggle('can-grab',!!hit);
-    draw();
+    if (oldPeg >= 0) state.pegs[oldPeg].occupied = false;
+    state.moves++;
+    dMoves.textContent = state.moves;
+    dDrag.textContent = `moved to p${pegIdx}`;
+  } else {
+    // Cancel — snap back
+    body.position.copy(state.drag.origPos);
+    body.velocity.set(0, 0, 0);
+    dDrag.textContent = 'cancelled';
   }
 
-  function onPointerUp(e) {
-    if (!state.drag) return;
-    const pos=getCanvasPos(e);
-    const pegIdx=hitTestPeg(pos.x,pos.y);
-    const isEmpty = pegIdx>=0 && state.ropeAtPeg[pegIdx]===null && pegIdx!==state.drag.fromPeg;
+  // Keep endpoint pinned (mass 0)
+  body.mass = 0;
+  body.updateMassProperties();
 
-    if (isEmpty) {
-      // Restore then execute (executeMove expects pre-move state)
-      state.twists=state.drag.savedTwists;
-      for (let i=0;i<state.ropes.length;i++) state.ropes[i].pegs=state.drag.savedRopePegs[i];
-      state.ropeAtPeg=state.drag.savedRopeAtPeg;
-      state.zOrder=state.drag.savedZOrder;
-      state.zCounter=state.drag.savedZCounter;
-      executeMove(state.drag.fromPeg, pegIdx);
-      state.moves++;
-    } else {
-      // Cancel
-      state.twists=state.drag.savedTwists;
-      for (let i=0;i<state.ropes.length;i++) state.ropes[i].pegs=state.drag.savedRopePegs[i];
-      state.ropeAtPeg=state.drag.savedRopeAtPeg;
-      state.zOrder=state.drag.savedZOrder;
-      state.zCounter=state.drag.savedZCounter;
-      state.lastAction = 'cancelled';
-    }
+  state.drag = null;
+  container.classList.remove('dragging', 'can-grab');
+}
 
-    state.drag=null;
-    canvas.classList.remove('dragging','can-grab');
-    draw();
+renderer.domElement.addEventListener('mousedown', onPointerDown);
+renderer.domElement.addEventListener('mousemove', onPointerMove);
+renderer.domElement.addEventListener('mouseup', onPointerUp);
+renderer.domElement.addEventListener('mouseleave', (e) => { if (state.drag) onPointerUp(e); });
+renderer.domElement.addEventListener('touchstart', onPointerDown, { passive: false });
+renderer.domElement.addEventListener('touchmove', onPointerMove, { passive: false });
+renderer.domElement.addEventListener('touchend', onPointerUp);
+
+restartBtn.addEventListener('click', () => { setup(); });
+
+window.addEventListener('resize', () => {
+  const w = window.innerWidth, h = window.innerHeight - headerH;
+  const a = w / h;
+  camera.left = -d * a; camera.right = d * a;
+  camera.top = d; camera.bottom = -d;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+});
+
+// --- Animation loop ---
+function animate() {
+  world.step(1/60);
+
+  for (const rope of state.ropes) {
+    updateRopeMesh(rope);
   }
 
-  canvas.addEventListener('mousedown',onPointerDown);
-  canvas.addEventListener('mousemove',onPointerMove);
-  canvas.addEventListener('mouseup',onPointerUp);
-  canvas.addEventListener('mouseleave',(e)=>{if(state.drag)onPointerUp(e);state.hoverPeg=-1;canvas.classList.remove('can-grab');});
-  canvas.addEventListener('touchstart',onPointerDown,{passive:false});
-  canvas.addEventListener('touchmove',onPointerMove,{passive:false});
-  canvas.addEventListener('touchend',onPointerUp);
-  canvas.addEventListener('touchcancel',(e)=>{if(state.drag)onPointerUp(e);});
-
-  restartBtn.addEventListener('click', () => { setupBraidingScenario(); draw(); });
-
-  function resizeCanvas() {
-    const dpr=devicePixelRatio||1, w=window.innerWidth, h=window.innerHeight-header.offsetHeight;
-    canvas.style.width=w+'px'; canvas.style.height=h+'px';
-    canvas.width=w*dpr; canvas.height=h*dpr;
+  // Update peg visuals
+  for (const peg of state.pegs) {
+    peg.mesh.material.color.setHex(peg.occupied ? 0x888888 : 0x1a0e08);
   }
-  window.addEventListener('resize',()=>{resizeCanvas();setupBraidingScenario();draw();});
 
-  resizeCanvas();
-  setupBraidingScenario();
-  draw();
-  window.__gameState=state;
-  window.__draw=draw;
-})();
+  renderer.render(scene, camera);
+  requestAnimationFrame(animate);
+}
+
+setup();
+animate();
 </script>
 </body>
 </html>
